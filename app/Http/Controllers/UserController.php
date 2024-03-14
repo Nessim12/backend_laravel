@@ -7,6 +7,7 @@ use App\Models\Admin;
 use App\Models\Conge;
 use App\Models\Pointing;
 use App\Models\User;
+use Carbon\CarbonInterval;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
@@ -70,6 +71,8 @@ public function logout()
     return response()->json(['message' => 'Successfully logged out']);
 }
 
+
+
 public function update(Request $request)
 {
     // Retrieve the authenticated user
@@ -77,10 +80,11 @@ public function update(Request $request)
 
     // Validate the request data
     $validator = Validator::make($request->all(), [
-        'firstname' => 'required|string',
-        'lastname' => 'required|string',
-        'genre' => 'required|string',
+        'firstname' => 'nullable|string',
+        'lastname' => 'nullable|string',
+        'genre' => 'nullable|string',
         'password' => 'nullable|string|min:6', // Allow password to be nullable
+        'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Allow only image files with max size of 2MB
     ]);
 
     if ($validator->fails()) {
@@ -88,9 +92,17 @@ public function update(Request $request)
     }
 
     // Update user details
-    $user->firstname = $request->input('firstname');
-    $user->lastname = $request->input('lastname');
-    $user->genre = $request->input('genre');
+    if ($request->filled('firstname')) {
+        $user->firstname = $request->input('firstname');
+    }
+
+    if ($request->filled('lastname')) {
+        $user->lastname = $request->input('lastname');
+    }
+
+    if ($request->filled('genre')) {
+        $user->genre = $request->input('genre');
+    }
 
     // Check if a new password is provided
     if ($request->filled('password')) {
@@ -107,78 +119,69 @@ public function update(Request $request)
         $user->password = bcrypt($request->input('password'));
     }
 
+    // Handle avatar upload
+    if ($request->hasFile('avatar')) {
+        // Delete previous avatar if exists
+        if ($user->avatar) {
+            Storage::disk('public')->delete($user->avatar);
+        }
+
+        $avatar = $request->file('avatar');
+        $imageName = Str::random(32) . '.' . $avatar->getClientOriginalExtension();
+        $avatar->storeAs('avatars', $imageName, 'public'); // Store the avatar in the 'avatars' directory within the 'public' disk
+        $user->avatar = $imageName;
+    }
+
     // Save the updated user details
     $user->save();
 
     return response()->json(['message' => 'User updated successfully', 'user' => $user]);
 }
-// public function displayQRCode()
-// {
-//     // Generate encrypted data with a unique identifier for the QR code
-//     $uniqueIdentifier = Str::random(10); // Generate a random string as the identifier
-//     $encryptedData = $this->encryptData('azerty' . '|' . $uniqueIdentifier, env('APP_KEY'));
 
-//     // Generate QR code with the encrypted data
-//     $qrCode = QrCode::size(120)->generate($encryptedData);
-
-//     // Pass the base64-encoded QR code and unique identifier to the view
-//     return view('welcome', ['qrCode' => $qrCode, 'identifier' => $uniqueIdentifier]);
-// }
-public function displayQRCode()
+public function displayEncryptedQRCode()
 {
     // Data to be encoded in the QR code
-    $data = 'ya fatma wino mo5ek'; // Replace 'Your data here' with the actual data to be encoded
+    $user = auth()->user(); // Get current user's ID
+    $data = 'testdata'; // Replace with your actual data
 
-    // Generate QR code with the data
-    $qrCode = QrCode::size(120)->generate($data);
+    // Encrypt the data along with user ID
+    $encryptedData = Crypt::encrypt(['user_id' => $user, 'data' => $data]);
+
+    // Generate QR code with the encrypted data
+    $qrCode = QrCode::size(120)->generate($encryptedData);
 
     // Pass the base64-encoded QR code to the view
     return view('welcome', ['qrCode' => $qrCode]);
+
 }
 
-
-
-
-public function handleScannedData(Request $request)
+public function scanQRCodeAndDecryptData(Request $request)
 {
-    // Check if the user is authenticated
-    if (!$request->user()) {
-        return response()->json(['error' => 'Unauthorized'], 401);
-    }
+    try {
+        // Get the encrypted data from the request
+        $encryptedData = $request->input('encryptedData');
 
-    $encryptedData = $request->input('scannedData');
-    $decryptedData = $this->decryptData($encryptedData, env('APP_KEY'));
-
-    // Extract data and expiration timestamp
-    list($data, $expirationTime) = explode('|', $decryptedData);
-
-    // Check if the QR code is still valid
-    if (now()->lessThanOrEqualTo(Carbon::parse($expirationTime))) {
-        // Process the valid scanned data
-        // ...
-        return response()->json(['message' => 'Scanned data processed successfully']);
-    }
-
-    // QR code has expired
-    return response()->json(['error' => 'QR code has expired'], 400);
+        // Decrypt the encrypted data
+        $decryptedData = Crypt::decrypt($encryptedData);
+        
+        // Check if the user ID in the decrypted data matches the current user's ID
+        $user = auth()->user();
+if ($user instanceof User) {
+    // User authenticated, return the decrypted data
+    return response()->json(['success' => true, 'data' => $decryptedData['data']]);
+} else {
+    // User not authorized, deny access
+    return response()->json(['success' => false, 'message' => 'Unauthorized access'], 403);
 }
-
-private function decryptData($encryptedData, $key)
-{
-    return Crypt::decryptString($encryptedData);
+    } catch (\Exception $e) {
+        // Error occurred during decryption, handle it appropriately
+        return response()->json(['success' => false, 'message' => 'Error decrypting data'], 500);
+    }
 }
 
 
-    // Handle scanned data function removed
 
-    // Encryption function moved to the top for easy access
-    private function encryptData($data, $key)
-    {
-        // Encrypt the data using the provided key
-        return Crypt::encryptString($data);
-    }
-
-    public function create_demande(Request $request)
+public function create_demande(Request $request)
 {
     try {
         $user = auth()->user();
@@ -196,7 +199,7 @@ private function decryptData($encryptedData, $key)
         // Validate the incoming request data
         $validatedData = $request->validate([
             'date_d' => 'required|date',
-            'date_f' => 'required|date',
+            'date_f' => 'required|date|after:date_d', // Ensure date_f is after date_d
             'motif' => 'required|string',
             'desciprtion' => 'required|string',
         ]);
@@ -224,6 +227,7 @@ private function decryptData($encryptedData, $key)
         return response()->json(['error' => 'Failed to create congé request', 'message' => $e->getMessage()], 500);
     }
 }
+
 public function show_demandes(Request $request)
 {
     try {
@@ -244,6 +248,160 @@ public function show_demandes(Request $request)
         return response()->json(['error' => 'Failed to retrieve congé requests', 'message' => $e->getMessage()], 500);
     }
 }
+
+
+public function checkIn(Request $request)
+{
+    $user = auth()->user();
+    $today = Carbon::today()->toDateString();
+    
+    // Find today's pointing record for the user
+    $pointing = Pointing::where('user_id', $user->id)
+                        ->where('date', $today)
+                        ->latest() // Get the latest record first
+                        ->first();
+
+    // Check if there's already a pointing record for today
+    if (!$pointing || $pointing->sortie) {
+        // Create a new pointing record if no record exists for today or if the last action was 'sortie'
+        $pointing = new Pointing();
+        $pointing->user_id = $user->id;
+        $pointing->date = $today;
+    } elseif ($pointing->entre) {
+        // If the last action was 'entre', return an error
+        return response()->json(['error' => 'Already checked in'], 400);
+    }
+
+    // Update entre time, set status to present, and change status_available to available
+    $pointing->entre = Carbon::now();
+    $pointing->statusjour = 'present';
+    $pointing->status_available = 'available'; // Change status to available
+    $pointing->save();
+
+    return response()->json(['message' => 'Check-in successful'], 200);
+}
+
+
+
+public function checkOut(Request $request)
+{
+    $user = auth()->user();
+    $today = Carbon::today()->toDateString();
+    
+    // Find today's pointing record for the user
+    $pointing = Pointing::where('user_id', $user->id)
+                        ->where('date', $today)
+                        ->latest() // Get the latest record first
+                        ->first();
+
+    // If there's no record, return an error
+    if (!$pointing) {
+        return response()->json(['error' => 'No check-in found for today'], 400);
+    }
+
+    // Check if the last action was 'sortie' or there's no 'entre' action yet
+    if ($pointing->sortie || !$pointing->entre) {
+        return response()->json(['error' => 'Invalid check-out action'], 400);
+    }
+
+    // Update sortie time and change status_available to not_available
+    $pointing->sortie = Carbon::now();
+    $pointing->status_available = 'not_available'; // Change status to not_available
+    $pointing->save();
+
+    return response()->json(['message' => 'Check-out successful'], 200);
+}
+
+
+public function getPointingsByDate(Request $request)
+    {
+        $user = auth()->user();
+        $date = $request->input('date', now()->toDateString()); // Default to today's date if not provided
+        
+        // Retrieve all pointing records for the user on the specified date
+        $pointings = Pointing::where('user_id', $user->id)
+                            ->whereDate('date', $date)
+                            ->get(['entre', 'sortie']);
+
+        // Calculate total working hours for the day
+        $totalSeconds = 0;
+        foreach ($pointings as $pointing) {
+            if ($pointing->entre && $pointing->sortie) {
+                $entre = Carbon::parse($pointing->entre);
+                $sortie = Carbon::parse($pointing->sortie);
+                $duration = $sortie->diffInSeconds($entre);
+                $totalSeconds += $duration;
+            }
+        }
+
+        // Format the total hours as HH:MM:SS
+        $formattedTotalHours = CarbonInterval::seconds($totalSeconds)->cascade()->forHumans();
+
+        return response()->json([
+            'pointings' => $pointings,
+            'total_hours' => $formattedTotalHours
+        ]);
+    }
+    public function getUsersAvailabilityToday()
+    {
+        // Check if the user is authenticated
+        if (!auth()->check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+        
+        $user = auth()->user();
+        
+        $today = Carbon::today()->toDateString();
+        
+        // Get all users
+        $users = User::all();
+        
+        // Create an array to store user availability status
+        $availability = [];
+        
+        // Loop through each user
+        foreach ($users as $user) {
+            // Find today's pointing record for the user
+            $pointing = Pointing::where('user_id', $user->id)
+                                ->where('date', $today)
+                                ->latest() // Get the latest record first
+                                ->first();
+    
+            // Check if there's a pointing record for today
+            if ($pointing) {
+                // Check if the user is available or not based on the status_available field
+                $availability[] = [
+                    'name' => $user->firstname,
+                    'email' => $user->email,
+                    'status_available' => $pointing->status_available,
+                ];
+            } else {
+                // If no pointing record exists, default status to not_available
+                $availability[] = [
+                    'name' => $user->firstname,
+                    'email' => $user->email,
+                    'status_available' => 'not_available',
+                ];
+            }
+        }
+        
+        return response()->json(['availability' => $availability], 200);
+    }
+    
+
+// public function getPointingsByDate(Request $request)
+// {
+//     $user = auth()->user();
+//     $date = $request->input('date', now()->toDateString()); // Default to today's date if not provided
+    
+//     // Retrieve all pointing records for the user on the specified date
+//     $pointings = Pointing::where('user_id', $user->id)
+//                         ->whereDate('date', $date)
+//                         ->get(['entre', 'sortie']);
+
+//     return response()->json(['pointings' => $pointings]);
+// }
+
 
 
 }

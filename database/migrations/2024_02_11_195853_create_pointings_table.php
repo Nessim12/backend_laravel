@@ -16,9 +16,11 @@ class CreatePointingsTable extends Migration
         Schema::create('pointings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('scanned_data');
-            $table->enum('scan_type', ['arrival', 'pause_start', 'pause_end', 'departure']);
-            $table->dateTime('scan_time');
+            $table->timestamp('entre')->nullable();
+            $table->timestamp('sortie')->nullable();
+            $table->date('date')->nullable();
+            $table->enum('statusjour',['absent','present'])->default('absent');
+            $table->enum('status_available',['available','not_available'])->default('not_available');
             $table->timestamps();
         });
     }

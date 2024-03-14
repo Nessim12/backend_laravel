@@ -19,9 +19,14 @@ Route::prefix('user')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [UserController::class, 'logout']);
         Route::get('/user', [UserController::class, 'me']);
-        Route::put('/update', [UserController::class, 'update']);
+        Route::post('/update', [UserController::class, 'update']);
         Route::post('/demande', [UserController::class, 'create_demande']);
         Route::get('/showdemande', [UserController::class, 'show_demandes']);
+        Route::post('/scan', [UserController::class, 'scanQRCodeAndDecryptData']);
+        Route::post('/entre', [UserController::class, 'checkIn']);
+        Route::post('/sortie', [UserController::class, 'checkOut']);
+        Route::post('/poitnagebydate', [UserController::class, 'getPointingsByDate']);
+        Route::get('/alluseravailble', [UserController::class, 'getUsersAvailabilityToday']);
         // Add more user-specific routes here...
     });
 });
@@ -34,6 +39,8 @@ Route::prefix('admin')->group(function () {
         Route::get('/user', [AdminController::class, 'me']);
         Route::post('/adduser', [AdminController::class, 'addUser']);
         Route::put('/updatedemande/{id}', [AdminController::class, 'update_demande']);
+        Route::get('/alldemande', [AdminController::class, 'viewAllDemandes']);
+        Route::post('/alluserpointage', [AdminController::class, 'getPointingsByDatealluser']);
         // Add more admin-specific routes here...
     });
 });

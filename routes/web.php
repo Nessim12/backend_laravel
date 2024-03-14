@@ -21,4 +21,4 @@ use Illuminate\Support\Facades\Route;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Illuminate\Support\Facades\Response;
 
-Route::get('/qr-codes', [UserController::class, 'displayQRCode']);
+Route::get('/qr-codes', [UserController::class, 'displayEncryptedQRCode']);

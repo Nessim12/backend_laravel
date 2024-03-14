@@ -11,9 +11,13 @@ class Pointing extends Model
 
     protected $fillable = [
         'user_id',
-        'scanned_data',
-        'scan_type',
-        'scan_time',
+        'entre',
+        'sortie',
+        'date',
+        'statusjour',
+        'status_available',
+
+
     ];
 
     // Define relationships if necessary

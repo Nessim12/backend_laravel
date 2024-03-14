@@ -19,6 +19,7 @@ return new class extends Migration
         $table->string('password');
         $table->float('soldecongée')->default(20);
         $table->enum('genre', ['women', 'men']);
+        $table->string('avatar')->nullable();
         $table->timestamps();
     });
 }
