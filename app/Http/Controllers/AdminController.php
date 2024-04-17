@@ -89,7 +89,70 @@ class AdminController extends Controller
             'password' => $password
         ]);
     }
+
+
+
+
+    public function getAllUsers()
+    {
+        try {
+            // Check if the authenticated user is an admin
+            $meResponse = $this->me();
+
+            if (isset($meResponse['error'])) {
+                return response()->json(['error' => 'Unauthorized. Only admins can view all users.'], 401);
+            }
+
+            if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+                return response()->json(['error' => 'Unauthorized. Only admins can view all users.'], 401);
+            }
+
+            // Fetch all users
+            $users = User::all();
+
+            // Return the users as a JSON response
+            return response()->json(['users' => $users], 200);
+        } catch (\Exception $e) {
+            // Handle any exceptions and return an error response
+            return response()->json(['error' => 'Failed to fetch users', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+
+    public function deleteUser($id)
+    {
+        try {
+            // Check if the authenticated user is an admin
+            $meResponse = $this->me();
+
+            if (isset($meResponse['error'])) {
+                return response()->json(['error' => 'Unauthorized. Only admins can delete users.'], 401);
+            }
+
+            if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+                return response()->json(['error' => 'Unauthorized. Only admins can delete users.'], 401);
+            }
+
+            // Find the user by ID
+            $user = User::find($id);
+
+            // Check if the user exists
+            if (!$user) {
+                return response()->json(['error' => 'User not found'], 404);
+            }
+
+            // Delete the user
+            $user->delete();
+
+            // Return a success message
+            return response()->json(['message' => 'User deleted successfully'], 200);
+        } catch (\Exception $e) {
+            // Handle any exceptions and return an error response
+            return response()->json(['error' => 'Failed to delete user', 'message' => $e->getMessage()], 500);
+        }
+    }
     
+
 public function me()
 {
     $user = auth()->user();
@@ -106,6 +169,7 @@ public function me()
         return ['error' => 'Unauthorized'];
     }
 }
+
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -131,6 +195,8 @@ public function me()
         return response()->json(['message' => 'Admin registered successfully', 'admin' => $admin]);
     }
 
+
+
     public function login(Request $request)
     {
         $credentials = $request->only('email', 'password');
@@ -150,20 +216,34 @@ public function me()
         return response()->json(['error' => 'Unauthorized'], 401);
     }
 
-    // Function to delete a user
-    public function deleteUser($id)
+
+
+    public function countUsers()
     {
-        $user = User::find($id);
-
-        if (!$user) {
-            return response()->json(['error' => 'User not found'], 404);
+        try {
+            // Check if the authenticated user is an admin
+            $meResponse = $this->me();
+    
+            if (isset($meResponse['error'])) {
+                return response()->json(['error' => 'Unauthorized. Only admins can count users.'], 401);
+            }
+    
+            if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+                return response()->json(['error' => 'Unauthorized. Only admins can count users.'], 401);
+            }
+    
+            // Count the number of users
+            $userCount = User::count();
+    
+            // Return the user count as a JSON response
+            return response()->json(['usercount' => $userCount], 200);
+        } catch (\Exception $e) {
+            // Handle any exceptions and return an error response
+            return response()->json(['error' => 'Failed to count users', 'message' => $e->getMessage()], 500);
         }
-
-        $user->delete();
-
-        return response()->json(['message' => 'User deleted successfully']);
     }
 
+    // Function to delete a user
 
 
     
@@ -209,6 +289,8 @@ public function me()
         return response()->json(['error' => 'Failed to update congé request status', 'message' => $e->getMessage()], 500);
     }
 }
+
+
 public function viewAllDemandes()
 {
     try {
@@ -223,8 +305,8 @@ public function viewAllDemandes()
             return response()->json(['error' => 'Unauthorized. Only admins can view all demandes.'], 401);
         }
 
-        // Fetch all demandes (congé requests)
-        $demandes = Conge::all();
+        // Fetch all demandes (congé requests) with user information
+        $demandes = Conge::with('user')->get();
 
         // Return the demandes as a JSON response
         return response()->json(['demandes' => $demandes], 200);
@@ -234,43 +316,293 @@ public function viewAllDemandes()
     }
 }
 
-public function getPointingsByDatealluser(Request $request)
+
+
+
+public function getPointingsByDateAllUsers(Request $request)
 {
     $date = $request->input('date', now()->toDateString()); // Default to today's date if not provided
-    
+
     // Retrieve all pointing records for the specified date
     $pointings = Pointing::whereDate('date', $date)
                          ->get(['user_id', 'entre', 'sortie']);
 
-    // Initialize an array to store total working hours for each user
-    $totalHoursPerUser = [];
+    // Initialize an array to store entre and sortie times per user
+    $userPointings = [];
 
+    // Group pointing records by user_id
     foreach ($pointings as $pointing) {
         $userId = $pointing->user_id;
 
-        // Calculate the working hours for the current pointing record
-        if ($pointing->entre && $pointing->sortie) {
-            $entre = Carbon::parse($pointing->entre);
-            $sortie = Carbon::parse($pointing->sortie);
-            $duration = $sortie->diffInSeconds($entre);
+        // Initialize user's entre and sortie arrays if not exists
+        if (!isset($userPointings[$userId])) {
+            $userPointings[$userId] = [
+                'user_id' => $userId,
+                'entre' => [],
+                'sortie' => []
+            ];
+        }
 
-            // Add the duration to the total hours for the user
-            if (!isset($totalHoursPerUser[$userId])) {
-                $totalHoursPerUser[$userId] = 0;
-            }
-            $totalHoursPerUser[$userId] += $duration;
+        // Collect entre and sortie times
+        if ($pointing->entre) {
+            $userPointings[$userId]['entre'][] = $pointing->entre;
+        }
+        if ($pointing->sortie) {
+            $userPointings[$userId]['sortie'][] = $pointing->sortie;
         }
     }
 
-    // Format the total hours for each user as HH:MM:SS
-    $formattedTotalHoursPerUser = [];
-    foreach ($totalHoursPerUser as $userId => $totalSeconds) {
-        $formattedTotalHoursPerUser[$userId] = CarbonInterval::seconds($totalSeconds)->cascade()->forHumans();
+    // Convert array values to list format
+    $userPointings = array_values($userPointings);
+
+    return response()->json(['user_pointings' => $userPointings], 200);
+}
+
+
+
+public function getUserStatusForToday()
+{
+    // Get all users
+    $users = User::all();
+
+    // Get today's date
+    $today = Carbon::today()->toDateString();
+
+    // Array to store user statuses
+    $userStatuses = [];
+
+    // Loop through each user
+    foreach ($users as $user) {
+        // Check if the user has a check-in record for today
+        $pointing = Pointing::where('user_id', $user->id)
+                            ->whereDate('date', $today)
+                            ->latest()
+                            ->first();
+
+        // Determine user status based on check-in record
+        $status = $pointing && $pointing->entre ? 'present' : 'absent';
+
+        // Add user status to the array
+        $userStatuses[] = [
+            'user_id' => $user->id,
+            'firstname' => $user->firstname,
+            'lastname' => $user->lastname,
+            'status' => $status,
+        ];
     }
 
-    return response()->json([
-        'pointings' => $pointings,
-        'total_hours_per_user' => $formattedTotalHoursPerUser
-    ]);
+    // Return user statuses as JSON response
+    return response()->json(['user_statuses' => $userStatuses]);
 }
+
+
+
+public function countUsersPresentToday()
+{
+    // Call the getUserStatusForToday() function to get the user statuses for today
+    $response = $this->getUserStatusForToday();
+
+    // Check if the response contains user statuses
+    if ($response->getStatusCode() === 200) {
+        // Decode the JSON response
+        $data = json_decode($response->getContent(), true);
+        
+        // Initialize count of present users
+        $presentUsersCount = 0;
+        
+        // Loop through user statuses
+        foreach ($data['user_statuses'] as $userStatus) {
+            // If the user is present, increment the count
+            if ($userStatus['status'] === 'present') {
+                $presentUsersCount++;
+            }
+        }
+
+        // Return the count of present users as a JSON response
+        return response()->json(['present_users_count' => $presentUsersCount]);
+    } else {
+        // Return an error response if failed to get user statuses
+        return $response;
+    }
+}
+
+
+
+public function getUserStatusForDate(Request $request)
+{
+    try {
+        // Get the date from the request or default to today's date
+        $date = $request->input('date', now()->toDateString());
+
+        // Get all users
+        $users = User::all();
+
+        // Array to store user statuses
+        $userStatuses = [];
+
+        // Loop through each user
+        foreach ($users as $user) {
+            // Check if the user has a check-in record for the specified date
+            $pointing = Pointing::where('user_id', $user->id)
+                                ->whereDate('date', $date)
+                                ->latest()
+                                ->first();
+
+            // Determine user status based on check-in record
+            $status = $pointing && $pointing->entre ? 'present' : 'absent';
+
+            // Add user status to the array
+            $userStatuses[] = [
+                'user_id' => $user->id,
+                'firstname' => $user->firstname,
+                'lastname' => $user->lastname,
+                'status' => $status,
+            ];
+        }
+
+        // Return user statuses as JSON response
+        return response()->json(['user_statuses' => $userStatuses], 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to get user statuses', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
+
+
+public function getUsersAvailabilityToday()
+{
+    try {
+        // Check if the user is authenticated
+        if (!auth()->check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+        
+        // Get today's date
+        $today = Carbon::today()->toDateString();
+        
+        // Get all users
+        $users = User::all();
+        
+        // Array to store user availability status
+        $availability = [];
+        
+        // Loop through each user
+        foreach ($users as $user) {
+            // Find today's pointing record for the user
+            $pointing = Pointing::where('user_id', $user->id)
+                                ->whereDate('date', $today)
+                                ->latest() // Get the latest record first
+                                ->first();
+    
+            // Determine user status based on pointing record
+            $status = $pointing && $pointing->entre ? 'present' : 'absent';
+            
+            // Determine user availability based on status
+            $availabilityStatus = $status === 'present' ? 'available' : 'not_available';
+
+            // Add user availability status to the array
+            $availability[] = [
+                'user_id' => $user->id,
+                'availability' => $availabilityStatus,
+            ];
+        }
+        
+        return response()->json(['availability' => $availability], 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to get users availability', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
+public function timeworks($userId, $date)
+{
+    // Find all pointing records for the specified user and date
+    $pointings = Pointing::where('user_id', $userId)
+                         ->whereDate('date', $date)
+                         ->get();
+
+    // Initialize total time worked in seconds
+    $totalTimeWorkedSeconds = 0;
+
+    // Process each pointing record for time calculations
+    foreach ($pointings as $pointing) {
+        if ($pointing->entre) {
+            $checkInTime = Carbon::parse($pointing->entre);
+
+            // Calculate time worked based on check-in and check-out times
+            $checkOutTime = $pointing->sortie ? Carbon::parse($pointing->sortie) : Carbon::now();
+            $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
+
+            // Add to total time worked
+            $totalTimeWorkedSeconds += $timeWorkedSeconds;
+        }
+    }
+
+    // Format total time worked as HH:MM:SS
+    $totalTimeWorked = gmdate('H:i', $totalTimeWorkedSeconds);
+
+    return $totalTimeWorked;
+}
+public function getUserStatusesAndAvailabilityForDate(Request $request)
+{
+    try {
+        // Get the date from the request or default to today's date
+        $date = $request->input('date', now()->toDateString());
+
+        // Get all users
+        $users = User::all();
+
+        // Array to store user statuses, availability, and time worked
+        $userStatuses = [];
+
+        // Loop through each user
+        foreach ($users as $user) {
+            // Find pointing record for the user on the specified date
+            $pointing = Pointing::where('user_id', $user->id)
+                                ->whereDate('date', $date)
+                                ->orderBy('created_at', 'desc') // Order by creation time to get the latest record
+                                ->first();
+
+            // Determine user status based on pointing record
+            $status = $pointing && $pointing->entre ? 'present' : 'absent';
+
+            // Initialize availability and time worked
+            $availability = null;
+            $timeWorked = null;
+
+            // Calculate availability and time worked if pointing record exists
+            if ($pointing && $pointing->entre) {
+                // Determine availability based on check-out status
+                $availability = $pointing->sortie ? 'not_available' : 'available';
+
+                // Calculate time worked using the timeworks function for the specific user and date
+                $timeWorked = $this->timeworks($user->id, $date);
+            } else {
+                // No pointing record for the specified date
+                $availability = 'not_available';
+            }
+
+            // Add user status, availability, and time worked to the array
+            $userStatuses[] = [
+                'user_id' => $user->id,
+                'firstname' => $user->firstname,
+                'lastname' => $user->lastname,
+                'status' => $status,
+                'availability' => $availability,
+                'time_worked' => $timeWorked,
+            ];
+        }
+
+        // Return user statuses, availability, and time worked as JSON response
+        return response()->json(['user_statuses' => $userStatuses], 200);
+    } catch (\Exception $e) {
+        // Handle exceptions and return an error response
+        return response()->json(['error' => 'Failed to get user statuses and availability', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
 }

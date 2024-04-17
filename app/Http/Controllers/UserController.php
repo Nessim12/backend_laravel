@@ -71,20 +71,17 @@ public function logout()
     return response()->json(['message' => 'Successfully logged out']);
 }
 
-
-
 public function update(Request $request)
 {
     // Retrieve the authenticated user
     $user = auth()->user();
 
-    // Validate the request data
+    // Validate the request data for updating user details
     $validator = Validator::make($request->all(), [
         'firstname' => 'nullable|string',
         'lastname' => 'nullable|string',
         'genre' => 'nullable|string',
         'password' => 'nullable|string|min:6', // Allow password to be nullable
-        'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Allow only image files with max size of 2MB
     ]);
 
     if ($validator->fails()) {
@@ -119,6 +116,26 @@ public function update(Request $request)
         $user->password = bcrypt($request->input('password'));
     }
 
+    // Save the updated user details
+    $user->save();
+
+    return response()->json(['message' => 'User details updated successfully', 'user' => $user]);
+}
+
+public function updateAvatar(Request $request)
+{
+    // Retrieve the authenticated user
+    $user = auth()->user();
+
+    // Validate the request data for updating the avatar
+    $validator = Validator::make($request->all(), [
+        'avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048', // Allow only image files with max size of 2MB
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['error' => $validator->errors()], 400);
+    }
+
     // Handle avatar upload
     if ($request->hasFile('avatar')) {
         // Delete previous avatar if exists
@@ -130,13 +147,17 @@ public function update(Request $request)
         $imageName = Str::random(32) . '.' . $avatar->getClientOriginalExtension();
         $avatar->storeAs('avatars', $imageName, 'public'); // Store the avatar in the 'avatars' directory within the 'public' disk
         $user->avatar = $imageName;
+
+        // Save the updated avatar
+        $user->save();
+
+        return response()->json(['message' => 'Avatar updated successfully', 'user' => $user]);
+    } else {
+        return response()->json(['error' => 'Avatar file not provided'], 400);
     }
-
-    // Save the updated user details
-    $user->save();
-
-    return response()->json(['message' => 'User updated successfully', 'user' => $user]);
 }
+
+
 
 public function displayEncryptedQRCode()
 {
@@ -158,26 +179,108 @@ public function displayEncryptedQRCode()
 public function scanQRCodeAndDecryptData(Request $request)
 {
     try {
+        // Check if the user is authenticated
+        if (!auth()->check()) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized access'], 403);
+        }
+
         // Get the encrypted data from the request
         $encryptedData = $request->input('encryptedData');
 
         // Decrypt the encrypted data
         $decryptedData = Crypt::decrypt($encryptedData);
         
-        // Check if the user ID in the decrypted data matches the current user's ID
+        // Get the authenticated user
         $user = auth()->user();
-if ($user instanceof User) {
-    // User authenticated, return the decrypted data
-    return response()->json(['success' => true, 'data' => $decryptedData['data']]);
-} else {
-    // User not authorized, deny access
-    return response()->json(['success' => false, 'message' => 'Unauthorized access'], 403);
-}
-    } catch (\Exception $e) {
-        // Error occurred during decryption, handle it appropriately
+
+        // Retrieve user's availability status for today
+        $availabilityStatus = $this->getUserAvailabilityTodayForUser($user);
+
+        return response()->json(['success' => true, 'availability_status' => $availabilityStatus, 'data' => $decryptedData['data']], 200);
+
+    } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+        // Error occurred during decryption
         return response()->json(['success' => false, 'message' => 'Error decrypting data'], 500);
+    } catch (\Exception $e) {
+        // General error handling
+        return response()->json(['success' => false, 'message' => 'Error processing request'], 500);
     }
 }
+
+private function getUserAvailabilityTodayForUser($user)
+{
+    if (!$user) {
+        return 'not_available'; // Assuming not available if user not found
+    }
+
+    $today = now()->toDateString();
+
+    // Find today's pointing record for the authenticated user
+    $pointing = Pointing::where('user_id', $user->id)
+                        ->where('date', $today)
+                        ->latest() // Get the latest record first
+                        ->first();
+
+    if ($pointing) {
+        // Retrieve and return the availability status
+        return $pointing->status_available;
+    } else {
+        // If no pointing record exists for today, default status to not_available
+        return 'not_available';
+    }
+}
+
+public function getUserAvailabilityToday()
+{
+    // Check if the user is authenticated
+    if (!auth()->check()) {
+        return response()->json(['error' => 'Unauthenticated'], 401);
+    }
+
+    $user = auth()->user();
+    $today = Carbon::today()->toDateString();
+
+    // Find today's pointing record for the authenticated user
+    $pointing = Pointing::where('user_id', $user->id)
+                        ->where('date', $today)
+                        ->latest() // Get the latest record first
+                        ->first();
+
+    if ($pointing) {
+        // Retrieve and return only the availability status
+        $availabilityStatus = $pointing->status_available;
+    } else {
+        // If no pointing record exists for today, default status to not_available
+        $availabilityStatus = 'not_available';
+    }
+
+    return response()->json(['availability_status' => $availabilityStatus], 200);
+}
+ 
+
+// public function scanQRCodeAndDecryptData(Request $request)
+// {
+//     try {
+//         // Get the encrypted data from the request
+//         $encryptedData = $request->input('encryptedData');
+
+//         // Decrypt the encrypted data
+//         $decryptedData = Crypt::decrypt($encryptedData);
+        
+//         // Check if the user ID in the decrypted data matches the current user's ID
+//         $user = auth()->user();
+// if ($user instanceof User) {
+//     // User authenticated, return the decrypted data
+//     return response()->json(['success' => true, 'data' => $decryptedData['data']]);
+// } else {
+//     // User not authorized, deny access
+//     return response()->json(['success' => false, 'message' => 'Unauthorized access'], 403);
+// }
+//     } catch (\Exception $e) {
+//         // Error occurred during decryption, handle it appropriately
+//         return response()->json(['success' => false, 'message' => 'Error decrypting data'], 500);
+//     }
+// }
 
 
 
@@ -342,6 +445,7 @@ public function getPointingsByDate(Request $request)
             'total_hours' => $formattedTotalHours
         ]);
     }
+
     public function getUsersAvailabilityToday()
     {
         // Check if the user is authenticated
@@ -387,6 +491,9 @@ public function getPointingsByDate(Request $request)
         
         return response()->json(['availability' => $availability], 200);
     }
+
+    
+
     
 
 // public function getPointingsByDate(Request $request)
@@ -401,7 +508,79 @@ public function getPointingsByDate(Request $request)
 
 //     return response()->json(['pointings' => $pointings]);
 // }
+public function getTimeWorked(Request $request)
+{
+    $user = auth()->user();
+    $today = Carbon::today()->toDateString();
+    
+    // Find today's pointing records for the user
+    $pointings = Pointing::where('user_id', $user->id)
+                        ->where('date', $today)
+                        ->get();
 
+    // Initialize variable to store total time worked
+    $totalTimeWorkedSeconds = 0;
+
+    // Calculate total time worked for the day
+    foreach ($pointings as $pointing) {
+        if ($pointing->entre && !$pointing->sortie) {
+            // If 'entre' is present but 'sortie' is not, calculate time worked until now
+            $checkInTime = Carbon::parse($pointing->entre);
+            $currentTime = Carbon::now();
+            $timeWorkedSeconds = $currentTime->diffInSeconds($checkInTime);
+            $totalTimeWorkedSeconds += $timeWorkedSeconds;
+        } elseif ($pointing->entre && $pointing->sortie) {
+            // If both 'entre' and 'sortie' are present, calculate time worked normally
+            $checkInTime = Carbon::parse($pointing->entre);
+            $checkOutTime = Carbon::parse($pointing->sortie);
+            $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
+            $totalTimeWorkedSeconds += $timeWorkedSeconds;
+        }
+    }
+
+    // Format total time worked as HH:MM:SS
+    $totalTimeWorked = gmdate('H:i', $totalTimeWorkedSeconds);
+
+    return response()->json(['time_worked' => $totalTimeWorked]);
+}
+public function timeworks(Request $request)
+{
+    $user = auth()->user();
+    $today = Carbon::today()->toDateString();
+
+    // Find all pointing records for the user today
+    $pointings = Pointing::where('user_id', $user->id)
+                         ->where('date', $today)
+                         ->get();
+
+    // Initialize total time worked in seconds
+    $totalTimeWorkedSeconds = 0;
+
+    // Process each pointing record for time calculations
+    foreach ($pointings as $pointing) {
+        if ($pointing->entre) {
+            $checkInTime = Carbon::parse($pointing->entre);
+
+            if (!$pointing->sortie) {
+                // If there's a check-in but no check-out, calculate time worked until now
+                $currentTime = Carbon::now();
+                $timeWorkedSeconds = $currentTime->diffInSeconds($checkInTime);
+            } else {
+                // If there's both check-in and check-out, calculate normal time worked
+                $checkOutTime = Carbon::parse($pointing->sortie);
+                $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
+            }
+
+            // Add to total time worked
+            $totalTimeWorkedSeconds += $timeWorkedSeconds;
+        }
+    }
+
+    // Format total time worked as HH:MM:SS
+    $totalTimeWorked = gmdate('H:i:s', $totalTimeWorkedSeconds);
+
+    return response()->json(['time_worked' => $totalTimeWorked]);
+}
 
 
 }
