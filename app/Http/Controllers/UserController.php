@@ -82,6 +82,9 @@ public function update(Request $request)
         'lastname' => 'nullable|string',
         'genre' => 'nullable|string',
         'password' => 'nullable|string|min:6', // Allow password to be nullable
+        'cin' => 'nullable|string',
+        'tel' => 'nullable|string',
+        'adresse' => 'nullable|string',
     ]);
 
     if ($validator->fails()) {
@@ -99,6 +102,18 @@ public function update(Request $request)
 
     if ($request->filled('genre')) {
         $user->genre = $request->input('genre');
+    }
+
+    if ($request->filled('cin')) {
+        $user->cin = $request->input('cin');
+    }
+
+    if ($request->filled('tel')) {
+        $user->tel = $request->input('tel');
+    }
+
+    if ($request->filled('adresse')) {
+        $user->adresse = $request->input('adresse');
     }
 
     // Check if a new password is provided
@@ -121,6 +136,7 @@ public function update(Request $request)
 
     return response()->json(['message' => 'User details updated successfully', 'user' => $user]);
 }
+
 
 public function updateAvatar(Request $request)
 {
@@ -282,66 +298,121 @@ public function getUserAvailabilityToday()
 //     }
 // }
 
-
-
 public function create_demande(Request $request)
 {
     try {
-        $user = auth()->user();
-
-        // Check if the user already has a congé request with status 'en_cours' or 'accepter'
-        $existingConge = Conge::where('user_id', $user->id)
-            ->whereIn('status', ['en_cours', 'accepter'])
-            ->exists();
-
-        // If the user already has a pending or accepted congé request, return an error response
-        if ($existingConge) {
-            return response()->json(['error' => 'You already have a pending or accepted congé request'], 400);
-        }
+        $user = Auth::user();
 
         // Validate the incoming request data
-        $validatedData = $request->validate([
+        $validator = Validator::make($request->all(), [
             'date_d' => 'required|date',
-            'date_f' => 'required|date|after:date_d', // Ensure date_f is after date_d
-            'motif' => 'required|string',
-            'desciprtion' => 'required|string',
+            'date_f' => 'required|date|after:date_d',
+            'motif_id' => 'required|exists:motifs,id',
+            'description' => 'required|string',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 400);
+        }
 
         // Calculate the number of days between date_d and date_f
-        $dateDebut = Carbon::parse($validatedData['date_d']);
-        $dateFin = Carbon::parse($validatedData['date_f']);
+        $dateDebut = Carbon::parse($request->date_d);
+        $dateFin = Carbon::parse($request->date_f);
         $nbrJours = $dateFin->diffInDays($dateDebut);
 
-        // Create the congé request
+        // Check if the remaining soldecongée is sufficient for the requested duration
+        if ($user->soldecongée < $nbrJours) {
+            return response()->json(['error' => 'Insufficient leave balance for this request'], 400);
+        }
+
+        // Create the congé request if validation passes
         $conge = Conge::create([
-            'date_d' => $validatedData['date_d'],
-            'date_f' => $validatedData['date_f'],
-            'motif' => $validatedData['motif'],
-            'desciprtion' => $validatedData['desciprtion'],
-            'solde' => $nbrJours, // Update solde by subtracting the number of days
-            'status' => 'en_cours', // Set default status as 'en_cours'
-            'user_id' => $user->id, // Associate the request with the authenticated user
+            'date_d' => $request->date_d,
+            'date_f' => $request->date_f,
+            'motif_id' => $request->motif_id,
+            'description' => $request->description,
+            'solde' => $nbrJours,
+            'status' => 'en_cours',
+            'user_id' => $user->id,
         ]);
 
-        // Return a response indicating success
+        // Deduct the leave balance (soldecongée) by the number of days requested
+        $user->soldecongée -= $nbrJours;
+        $user->save();
+
         return response()->json(['message' => 'Congé request created successfully', 'conge' => $conge], 201);
     } catch (\Exception $e) {
-        // Handle any exceptions and return an error response
         return response()->json(['error' => 'Failed to create congé request', 'message' => $e->getMessage()], 500);
     }
 }
+
+// public function create_demande(Request $request)
+// {
+//     try {
+//         $user = auth()->user();
+
+//         // Check if the user already has a congé request with status 'en_cours' or 'accepter'
+//         $existingConge = Conge::where('user_id', $user->id)
+//             ->whereIn('status', ['en_cours', 'accepter'])
+//             ->exists();
+
+//         // If the user already has a pending or accepted congé request, return an error response
+//         if ($existingConge) {
+//             return response()->json(['error' => 'You already have a pending or accepted congé request'], 400);
+//         }
+
+//         // Validate the incoming request data
+//         $validatedData = $request->validate([
+//             'date_d' => 'required|date',
+//             'date_f' => 'required|date|after:date_d', // Ensure date_f is after date_d
+//             'motif_id' => 'required|exists:motifs,id', // Validate motif ID
+//             'description' => 'required|string',
+//         ]);
+
+//         // Calculate the number of days between date_d and date_f
+//         $dateDebut = Carbon::parse($validatedData['date_d']);
+//         $dateFin = Carbon::parse($validatedData['date_f']);
+//         $nbrJours = $dateFin->diffInDays($dateDebut);
+
+//         // Create the congé request
+//         $conge = Conge::create([
+//             'date_d' => $validatedData['date_d'],
+//             'date_f' => $validatedData['date_f'],
+//             'motif_id' => $validatedData['motif_id'], // Store motif ID instead of name
+//             'description' => $validatedData['description'],
+//             'solde' => $nbrJours, // Update solde by subtracting the number of days
+//             'status' => 'en_cours', // Set default status as 'en_attente'
+//             'user_id' => $user->id, // Associate the request with the authenticated user
+//         ]);
+
+//         // Return a response indicating success
+//         return response()->json(['message' => 'Congé request created successfully', 'conge' => $conge], 201);
+//     } catch (\Exception $e) {
+//         // Handle any exceptions and return an error response
+//         return response()->json(['error' => 'Failed to create congé request', 'message' => $e->getMessage()], 500);
+//     }
+// }
 
 public function show_demandes(Request $request)
 {
     try {
         $user = auth()->user();
 
-        // Retrieve congé requests of the authenticated user
-        $demandes = Conge::where('user_id', $user->id)->get();
+        // Retrieve congé requests of the authenticated user with motif details
+        $demandes = Conge::where('user_id', $user->id)
+            ->with('motif') // Eager load the motif relationship
+            ->get();
 
         // Calculate solde for each demande
         $demandes->each(function ($demande) {
             $demande->solde = \Carbon\Carbon::parse($demande->date_f)->diffInDays(\Carbon\Carbon::parse($demande->date_d));
+        });
+
+        // Transform motif_id to motif_name in each demande
+        $demandes->transform(function ($demande) {
+            $demande->motif_name = $demande->motif->motif_name; // Access the motif name via the relationship
+            unset($demande->motif); // Remove the motif object after extracting the motif_name
+            return $demande;
         });
 
         // Return response with the congé requests
@@ -351,6 +422,7 @@ public function show_demandes(Request $request)
         return response()->json(['error' => 'Failed to retrieve congé requests', 'message' => $e->getMessage()], 500);
     }
 }
+
 
 
 public function checkIn(Request $request)

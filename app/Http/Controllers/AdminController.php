@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\RegisterConfirmation;
 use App\Models\Admin;
 use App\Models\Conge;
+use App\Models\Motif;
 use App\Models\Pointing;
 use App\Models\User;
 use Carbon\CarbonInterval;
@@ -26,69 +27,131 @@ class AdminController extends Controller
 
     
     public function addUser(Request $request)
-    {
-        // Check if the authenticated user is an admin
-        $meResponse = $this->me();
-        
-        if (isset($meResponse['error'])) {
-            return response()->json(['error' => 'Unauthorized. Only admins can add users.'], 401);
-        }
-        
-        if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
-            return response()->json(['error' => 'Unauthorized. Only admins can add users.'], 401);
-        }
-        
-        // Validate the incoming request data
-        $validator = Validator::make($request->all(), [
-            'firstname' => 'required|string',
-            'lastname' => 'required|string',
-            'email' => 'required|email|unique:users,email',
-            'genre' => 'required|in:women,men',
-        ]);
-    
-        // If validation fails, return error response
-        if ($validator->fails()) {
-            return response()->json(['error' => $validator->errors()], 400);
-        }
-    
-        // Generate a random password
-        $password = Str::random(8);
-    
-        // Set default avatar based on gender
-        $defaultAvatar = $request->input('genre') === 'men' ? 'avatarmen.jpg' : 'womenavatar.png';
-    
-        // Move default avatar to public disk
-        $avatarPath = "avatars/$defaultAvatar";
-        Storage::disk('public')->put($avatarPath, Storage::disk('local')->get("public/$defaultAvatar"));
-    
-        // Create the user with the provided data and default soldecongée value of 20
-        $user = User::create([
-            'firstname' => $request->input('firstname'),
-            'lastname' => $request->input('lastname'),
-            'email' => $request->input('email'),
-            'password' => bcrypt($password), // Generate and hash a random password
-            'genre' => $request->input('genre'),
-            'soldecongée' => 20, // Set the default value for soldecongée
-            'avatar' => $avatarPath, // Set default avatar path
-        ]);
-    
-        $data = [
-            'firstname' => $user->firstname,
-            'lastname' => $user->lastname,
-            'email' => $user->email,
-            'password' => $password,
-        ];
-    
-        // Send an email with the user's login details
-        Mail::to($user->email)->send(new RegisterConfirmation($data));
-    
-        // Return response with the newly created user's information
-        return response()->json([
-            'message' => 'User created successfully',
-            'user' => $user,
-            'password' => $password
-        ]);
+{
+    // Check if the authenticated user is an admin
+    $meResponse = $this->me();
+
+    if (isset($meResponse['error'])) {
+        return response()->json(['error' => 'Unauthorized. Only admins can add users.'], 401);
     }
+
+    if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+        return response()->json(['error' => 'Unauthorized. Only admins can add users.'], 401);
+    }
+
+    // Validate the incoming request data
+    $validator = Validator::make($request->all(), [
+        'cin' => 'required|string',
+        'firstname' => 'required|string',
+        'lastname' => 'required|string',
+        'email' => 'required|email|unique:users,email',
+        'tel' => 'required|string',
+        'adresse' => 'required|string',
+        'genre' => 'required|in:women,men',
+    ]);
+
+    // If validation fails, return error response
+    if ($validator->fails()) {
+        return response()->json(['error' => $validator->errors()], 400);
+    }
+
+    // Generate a random password
+    $password = Str::random(8);
+
+    // Set default avatar based on gender
+    $defaultAvatar = $request->input('genre') === 'men' ? 'avatarmen.jpg' : 'womenavatar.png';
+
+    // Move default avatar to public disk
+    $avatarPath = "avatars/$defaultAvatar";
+    Storage::disk('public')->put($avatarPath, Storage::disk('local')->get("public/$defaultAvatar"));
+
+    // Create the user with the provided data and default soldecongée value of 20
+    $user = User::create([
+        'cin' => $request->input('cin'),
+        'firstname' => $request->input('firstname'),
+        'lastname' => $request->input('lastname'),
+        'email' => $request->input('email'),
+        'password' => bcrypt($password), // Generate and hash a random password
+        'tel' => $request->input('tel'),
+        'adresse' => $request->input('adresse'),
+        'genre' => $request->input('genre'),
+        'soldecongée' => 20, // Set the default value for soldecongée
+        'avatar' => $avatarPath, // Set default avatar path
+    ]);
+
+    $data = [
+        'firstname' => $user->firstname,
+        'lastname' => $user->lastname,
+        'email' => $user->email,
+        'password' => $password,
+    ];
+
+    // Send an email with the user's login details
+    Mail::to($user->email)->send(new RegisterConfirmation($data));
+
+    // Return response with the newly created user's information
+    return response()->json([
+        'message' => 'User created successfully',
+        'user' => $user,
+        'password' => $password
+    ]);
+}
+
+public function updateUser(Request $request, $id)
+{
+    // Check if the authenticated user is an admin
+    $meResponse = $this->me();
+
+    if (isset($meResponse['error'])) {
+        return response()->json(['error' => 'Unauthorized. Only admins can update users.'], 401);
+    }
+
+    if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+        return response()->json(['error' => 'Unauthorized. Only admins can update users.'], 401);
+    }
+
+    // Find the user by ID
+    $user = User::find($id);
+
+    // If user not found, return error response
+    if (!$user) {
+        return response()->json(['error' => 'User not found'], 404);
+    }
+
+    // Validate the incoming request data
+    $validator = Validator::make($request->all(), [
+        'cin' => 'required|string',
+        'firstname' => 'required|string',
+        'lastname' => 'required|string',
+        'email' => 'required|email|unique:users,email,' . $user->id, // Ignore unique check for the current user
+        'tel' => 'required|string',
+        'adresse' => 'required|string',
+        'genre' => 'required|in:women,men',
+    ]);
+
+    // If validation fails, return error response
+    if ($validator->fails()) {
+        return response()->json(['error' => $validator->errors()], 400);
+    }
+
+    // Update user with the provided data
+    $user->cin = $request->input('cin');
+    $user->firstname = $request->input('firstname');
+    $user->lastname = $request->input('lastname');
+    $user->email = $request->input('email');
+    $user->tel = $request->input('tel');
+    $user->adresse = $request->input('adresse');
+    $user->genre = $request->input('genre');
+
+    // Save the updated user
+    $user->save();
+
+    // Return response with the updated user's information
+    return response()->json([
+        'message' => 'User updated successfully',
+        'user' => $user
+    ]);
+}
 
 
 
@@ -248,73 +311,77 @@ public function me()
 
     
     public function update_demande(Request $request, $id)
-{
-    try {
-        // Check if the authenticated user is an admin
-        $meResponse = $this->me();
-
-        if (isset($meResponse['error'])) {
-            return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
+    {
+        try {
+            // Check if the authenticated user is an admin
+            $meResponse = $this->me();
+    
+            if (isset($meResponse['error'])) {
+                return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
+            }
+    
+            if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+                return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
+            }
+    
+            // Find the congé request by ID
+            $conge = Conge::findOrFail($id);
+    
+            // Validate the incoming request data
+            $validatedData = $request->validate([
+                'status' => 'required|in:en_cours,accepter,refuser',
+                'refuse_reason' => 'required_if:status,refuser|string', // Require refuse_reason when status is "refuser"
+            ]);
+    
+            // Update the status and refuse_reason (if applicable) of the congé request
+            $conge->status = $validatedData['status'];
+            if ($validatedData['status'] === 'refuser') {
+                $conge->refuse_reason = $validatedData['refuse_reason'];
+            }
+            $conge->save();
+    
+            // Deduct soldecongée from user's balance if the request is accepted
+            if ($validatedData['status'] === 'accepter') {
+                $user = $conge->user;
+                $user->soldecongée -= $conge->solde;
+                $user->save();
+            }
+    
+            // Return a response indicating success
+            return response()->json(['message' => 'Congé request status updated successfully', 'conge' => $conge], 200);
+        } catch (\Exception $e) {
+            // Handle any exceptions and return an error response
+            return response()->json(['error' => 'Failed to update congé request status', 'message' => $e->getMessage()], 500);
         }
-
-        if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
-            return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
-        }
-
-        // Find the congé request by ID
-        $conge = Conge::findOrFail($id);
-
-        // Validate the incoming request data
-        $validatedData = $request->validate([
-            'status' => 'required|in:en_cours,accepter,refuser',
-        ]);
-
-        // Update the status of the congé request
-        $conge->update([
-            'status' => $validatedData['status'],
-        ]);
-
-        $conge->save();
-        
-        if ($validatedData['status'] === 'accepter') {
-            $user = $conge->user;
-            $user->soldecongée -= $conge->solde;
-            $user->save();
-        }
-
-        // Return a response indicating success
-        return response()->json(['message' => 'Congé request status updated successfully', 'conge' => $conge], 200);
-    } catch (\Exception $e) {
-        // Handle any exceptions and return an error response
-        return response()->json(['error' => 'Failed to update congé request status', 'message' => $e->getMessage()], 500);
     }
-}
+    
 
 
-public function viewAllDemandes()
-{
-    try {
-        // Check if the authenticated user is an admin
-        $meResponse = $this->me();
-
-        if (isset($meResponse['error'])) {
-            return response()->json(['error' => 'Unauthorized. Only admins can view all demandes.'], 401);
+    public function viewAllDemandes()
+    {
+        try {
+            // Check if the authenticated user is an admin
+            $meResponse = $this->me();
+    
+            if (isset($meResponse['error'])) {
+                return response()->json(['error' => 'Unauthorized. Only admins can view all demandes.'], 401);
+            }
+    
+            if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+                return response()->json(['error' => 'Unauthorized. Only admins can view all demandes.'], 401);
+            }
+    
+            // Fetch all demandes (congé requests) with user and motif information
+            $demandes = Conge::with(['user', 'motif'])->get();
+    
+            // Return the demandes as a JSON response
+            return response()->json(['demandes' => $demandes], 200);
+        } catch (\Exception $e) {
+            // Handle any exceptions and return an error response
+            return response()->json(['error' => 'Failed to fetch demandes', 'message' => $e->getMessage()], 500);
         }
-
-        if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
-            return response()->json(['error' => 'Unauthorized. Only admins can view all demandes.'], 401);
-        }
-
-        // Fetch all demandes (congé requests) with user information
-        $demandes = Conge::with('user')->get();
-
-        // Return the demandes as a JSON response
-        return response()->json(['demandes' => $demandes], 200);
-    } catch (\Exception $e) {
-        // Handle any exceptions and return an error response
-        return response()->json(['error' => 'Failed to fetch demandes', 'message' => $e->getMessage()], 500);
     }
-}
+    
 
 
 
@@ -588,8 +655,11 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
             // Add user status, availability, and time worked to the array
             $userStatuses[] = [
                 'user_id' => $user->id,
+                'cin' => $user->cin,
                 'firstname' => $user->firstname,
                 'lastname' => $user->lastname,
+                'tel' => $user->tel,
+                'email' => $user->email,
                 'status' => $status,
                 'availability' => $availability,
                 'time_worked' => $timeWorked,
@@ -601,6 +671,63 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
     } catch (\Exception $e) {
         // Handle exceptions and return an error response
         return response()->json(['error' => 'Failed to get user statuses and availability', 'message' => $e->getMessage()], 500);
+    }
+}
+public function addMotif(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'motif_name' => 'required|string|unique:motifs,motif_name',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['error' => $validator->errors()], 400);
+    }
+
+    $motif = Motif::create([
+        'motif_name' => $request->input('motif_name'),
+    ]);
+
+    return response()->json(['message' => 'Motif added successfully', 'motif' => $motif], 201);
+}
+
+// Method to update an existing motif
+public function updateMotif(Request $request, $motifId)
+{
+    $motif = Motif::findOrFail($motifId);
+
+    $validator = Validator::make($request->all(), [
+        'motif_name' => 'required|string|unique:motifs,motif_name,' . $motif->id,
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['error' => $validator->errors()], 400);
+    }
+
+    $motif->motif_name = $request->input('motif_name');
+    $motif->save();
+
+    return response()->json(['message' => 'Motif updated successfully', 'motif' => $motif], 200);
+}
+
+// Method to delete an existing motif
+public function deleteMotif($motifId)
+{
+    $motif = Motif::findOrFail($motifId);
+    $motif->delete();
+
+    return response()->json(['message' => 'Motif deleted successfully'], 200);
+}
+public function getAllMotifs()
+{
+    try {
+        // Fetch all motifs
+        $motifs = Motif::all();
+
+        // Return motifs as JSON response
+        return response()->json(['motifs' => $motifs], 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to fetch motifs', 'message' => $e->getMessage()], 500);
     }
 }
 

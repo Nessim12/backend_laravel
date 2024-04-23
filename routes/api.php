@@ -44,7 +44,12 @@ Route::prefix('admin')->group(function () {
         Route::get('/countUsers', [AdminController::class, 'countUsers']);
         Route::get('/users', [AdminController::class, 'getAllUsers']);
         Route::post('/adduser', [AdminController::class, 'addUser']);
+        Route::put('/updateuser/{id}', [AdminController::class, 'updateUser']);
+        Route::post('/addmotif', [AdminController::class, 'addMotif']);
+        Route::put('/updatemotif/{id}', [AdminController::class, 'updateMotif']);
+        Route::delete('/deletemotif/{id}', [AdminController::class, 'deleteMotif']);
         Route::put('/updatedemande/{id}', [AdminController::class, 'update_demande']);
+        Route::get('/allmotifs', [AdminController::class, 'getAllMotifs']);
         Route::delete('/deleteuser/{id}', [AdminController::class, 'deleteUser']);
         Route::get('/alldemande', [AdminController::class, 'viewAllDemandes']);
         Route::post('/alluserpointage', [AdminController::class, 'getPointingsByDateAllUsers']);
