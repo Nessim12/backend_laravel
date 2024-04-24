@@ -22,6 +22,7 @@ Route::prefix('user')->group(function () {
         Route::post('/update', [UserController::class, 'update']);
         Route::post('/updateavatar', [UserController::class, 'updateAvatar']);
         Route::post('/demande', [UserController::class, 'create_demande']);
+        Route::get('/allmotifs', [UserController::class, 'getAllMotifs']);
         Route::get('/showdemande', [UserController::class, 'show_demandes']);
         Route::post('/scan', [UserController::class, 'scanQRCodeAndDecryptData']);
         Route::post('/entre', [UserController::class, 'checkIn']);

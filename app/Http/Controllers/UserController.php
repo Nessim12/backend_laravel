@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\RegisterConfirmation;
 use App\Models\Admin;
 use App\Models\Conge;
+use App\Models\Motif;
 use App\Models\Pointing;
 use App\Models\User;
 use Carbon\CarbonInterval;
@@ -297,11 +298,19 @@ public function getUserAvailabilityToday()
 //         return response()->json(['success' => false, 'message' => 'Error decrypting data'], 500);
 //     }
 // }
-
 public function create_demande(Request $request)
 {
     try {
         $user = Auth::user();
+
+        // Check if the user already has a pending or accepted congé request
+        $existingConge = Conge::where('user_id', $user->id)
+            ->whereIn('status', ['en_cours']) // Check for 'en_cours' and 'accepter' statuses
+            ->exists();
+
+        if ($existingConge) {
+            return response()->json(['error' => 'You already have a pending '], 400);
+        }
 
         // Validate the incoming request data
         $validator = Validator::make($request->all(), [
@@ -320,31 +329,44 @@ public function create_demande(Request $request)
         $dateFin = Carbon::parse($request->date_f);
         $nbrJours = $dateFin->diffInDays($dateDebut);
 
+        // Find the last accepted leave request
+        $lastAcceptedConge = Conge::where('user_id', $user->id)
+            ->where('status', 'accepter') // Only consider 'accepter' status
+            ->orderBy('date_f', 'desc') // Order by date_f descending
+            ->first();
+
+        if ($lastAcceptedConge) {
+            // Get the end date of the last accepted leave request
+            $lastEndDate = Carbon::parse($lastAcceptedConge->date_f);
+
+            // Check if the requested start date is within or before the last accepted leave request end date
+            if ($dateDebut->lessThanOrEqualTo($lastEndDate)) {
+                return response()->json(['error' => 'You must wait until after your last accepted leave request ends'], 400);
+            }
+        }
+
         // Check if the remaining soldecongée is sufficient for the requested duration
         if ($user->soldecongée < $nbrJours) {
             return response()->json(['error' => 'Insufficient leave balance for this request'], 400);
         }
 
-        // Create the congé request if validation passes
-        $conge = Conge::create([
+        // Create the leave request (conge)
+        $demande = Conge::create([
+            'user_id' => $user->id,
             'date_d' => $request->date_d,
             'date_f' => $request->date_f,
             'motif_id' => $request->motif_id,
             'description' => $request->description,
             'solde' => $nbrJours,
-            'status' => 'en_cours',
-            'user_id' => $user->id,
+            'status' => 'en_cours', // Status is initially set to 'en_cours'
         ]);
 
-        // Deduct the leave balance (soldecongée) by the number of days requested
-        $user->soldecongée -= $nbrJours;
-        $user->save();
-
-        return response()->json(['message' => 'Congé request created successfully', 'conge' => $conge], 201);
+        return response()->json(['message' => 'Leave request created successfully', 'demande' => $demande], 201);
     } catch (\Exception $e) {
-        return response()->json(['error' => 'Failed to create congé request', 'message' => $e->getMessage()], 500);
+        return response()->json(['error' => 'Failed to create leave request', 'message' => $e->getMessage()], 500);
     }
 }
+
 
 // public function create_demande(Request $request)
 // {
@@ -652,6 +674,20 @@ public function timeworks(Request $request)
     $totalTimeWorked = gmdate('H:i:s', $totalTimeWorkedSeconds);
 
     return response()->json(['time_worked' => $totalTimeWorked]);
+}
+
+public function getAllMotifs()
+{
+    try {
+        // Fetch all motifs
+        $motifs = Motif::all();
+
+        // Return motifs as JSON response
+        return response()->json(['motifs' => $motifs], 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to fetch motifs', 'message' => $e->getMessage()], 500);
+    }
 }
 
 
