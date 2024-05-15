@@ -27,6 +27,7 @@ class User extends Authenticatable
         'adresse',
         'soldecongée',
         'genre',
+        'work_mod',
         'avatar',
     ];
 

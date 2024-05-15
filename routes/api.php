@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Route;
 */use App\Http\Controllers\UserController;
 Route::prefix('user')->group(function () {
     Route::post('/login', [UserController::class, 'login']);
+    Route::post('/newpassword', [UserController::class, 'sendNewPassword']);
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [UserController::class, 'logout']);
         Route::get('/user', [UserController::class, 'me']);
@@ -32,6 +33,11 @@ Route::prefix('user')->group(function () {
         Route::get('/useravailble', [UserController::class, 'getUserAvailabilityToday']);
         Route::get('/Countertime', [UserController::class, 'getTimeWorked']);
         Route::get('/timeworks', [UserController::class, 'timeworks']);
+        Route::get('/calendrie', [UserController::class, 'getAttendanceStatusAndTimeWorked']);
+        Route::get('/datecreate', [UserController::class, 'getUserCreationDateFromToken']);
+        Route::post('/onlinwork', [UserController::class, 'onlinwork']);
+        Route::get('/showonlinwork', [UserController::class, 'getAllWorkOnlineRequests']);
+
         // Add more user-specific routes here...
     });
 });
@@ -40,6 +46,7 @@ Route::prefix('user')->group(function () {
 Route::prefix('admin')->group(function () {
     Route::post('/register', [AdminController::class, 'register']);
     Route::post('/login', [AdminController::class, 'login']);
+    Route::get('/update-work-mode', [AdminController::class, 'updateWorkModeAutomatically']);
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/user', [AdminController::class, 'me']);
         Route::get('/countUsers', [AdminController::class, 'countUsers']);
@@ -59,6 +66,8 @@ Route::prefix('admin')->group(function () {
         Route::post('/alluseretatwithdate', [AdminController::class, 'getUserStatusesAndAvailabilityForDate']);
         Route::get('/alluseravaibleadmin', [AdminController::class, 'getUsersAvailabilityToday']);
         Route::post('/timeworks', [AdminController::class, 'timeworks']);
+        Route::get('/allonlinework', [AdminController::class, 'getAllOnlineWork']);
+        Route::put('/updateonline/{id}', [AdminController::class, 'updateonlinework']);
         // Add more admin-specific routes here...
     });
 });

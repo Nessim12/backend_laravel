@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\RegisterConfirmation;
+use App\Mail\Newpassword;
 use App\Models\Admin;
 use App\Models\Conge;
 use App\Models\Motif;
 use App\Models\Pointing;
 use App\Models\User;
+use App\Models\Workremote;
 use Carbon\CarbonInterval;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -42,6 +43,42 @@ class UserController extends Controller
     return response()->json(['error' => 'Unauthorized'], 401);
 }
 
+public function sendNewPassword(Request $request)
+    {
+        // Validate request input
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
+
+        // Generate a new password
+        $newPassword = Str::random(8); // Generate a random password
+
+        // Update user's password in the database
+        $user = User::where('email', $request->email)->first();
+        $user->password = Hash::make($newPassword);
+        $user->save();
+
+        $data = [
+            'firstname' => $user->firstname,
+            'lastname' => $user->lastname,
+            'email' => $user->email,
+            'password' => $newPassword,
+            'new_password' => $newPassword, // Add this line
+        ];
+        
+
+        Mail::to($user->email)->send(new Newpassword($data));
+        // Send the new password to the user's email
+        // Mail::send('emails.new_password', ['password' => $newPassword], function($message) use ($user) {
+        //     $message->to($user->email)->subject('Your New Password');
+        // });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'New password sent to your email.',
+            'password' => $newPassword,
+        ]);
+    }
 
 public function me()
 {
@@ -275,29 +312,6 @@ public function getUserAvailabilityToday()
 }
  
 
-// public function scanQRCodeAndDecryptData(Request $request)
-// {
-//     try {
-//         // Get the encrypted data from the request
-//         $encryptedData = $request->input('encryptedData');
-
-//         // Decrypt the encrypted data
-//         $decryptedData = Crypt::decrypt($encryptedData);
-        
-//         // Check if the user ID in the decrypted data matches the current user's ID
-//         $user = auth()->user();
-// if ($user instanceof User) {
-//     // User authenticated, return the decrypted data
-//     return response()->json(['success' => true, 'data' => $decryptedData['data']]);
-// } else {
-//     // User not authorized, deny access
-//     return response()->json(['success' => false, 'message' => 'Unauthorized access'], 403);
-// }
-//     } catch (\Exception $e) {
-//         // Error occurred during decryption, handle it appropriately
-//         return response()->json(['success' => false, 'message' => 'Error decrypting data'], 500);
-//     }
-// }
 public function create_demande(Request $request)
 {
     try {
@@ -368,53 +382,6 @@ public function create_demande(Request $request)
 }
 
 
-// public function create_demande(Request $request)
-// {
-//     try {
-//         $user = auth()->user();
-
-//         // Check if the user already has a congé request with status 'en_cours' or 'accepter'
-//         $existingConge = Conge::where('user_id', $user->id)
-//             ->whereIn('status', ['en_cours', 'accepter'])
-//             ->exists();
-
-//         // If the user already has a pending or accepted congé request, return an error response
-//         if ($existingConge) {
-//             return response()->json(['error' => 'You already have a pending or accepted congé request'], 400);
-//         }
-
-//         // Validate the incoming request data
-//         $validatedData = $request->validate([
-//             'date_d' => 'required|date',
-//             'date_f' => 'required|date|after:date_d', // Ensure date_f is after date_d
-//             'motif_id' => 'required|exists:motifs,id', // Validate motif ID
-//             'description' => 'required|string',
-//         ]);
-
-//         // Calculate the number of days between date_d and date_f
-//         $dateDebut = Carbon::parse($validatedData['date_d']);
-//         $dateFin = Carbon::parse($validatedData['date_f']);
-//         $nbrJours = $dateFin->diffInDays($dateDebut);
-
-//         // Create the congé request
-//         $conge = Conge::create([
-//             'date_d' => $validatedData['date_d'],
-//             'date_f' => $validatedData['date_f'],
-//             'motif_id' => $validatedData['motif_id'], // Store motif ID instead of name
-//             'description' => $validatedData['description'],
-//             'solde' => $nbrJours, // Update solde by subtracting the number of days
-//             'status' => 'en_cours', // Set default status as 'en_attente'
-//             'user_id' => $user->id, // Associate the request with the authenticated user
-//         ]);
-
-//         // Return a response indicating success
-//         return response()->json(['message' => 'Congé request created successfully', 'conge' => $conge], 201);
-//     } catch (\Exception $e) {
-//         // Handle any exceptions and return an error response
-//         return response()->json(['error' => 'Failed to create congé request', 'message' => $e->getMessage()], 500);
-//     }
-// }
-
 public function show_demandes(Request $request)
 {
     try {
@@ -444,6 +411,7 @@ public function show_demandes(Request $request)
         return response()->json(['error' => 'Failed to retrieve congé requests', 'message' => $e->getMessage()], 500);
     }
 }
+
 
 
 
@@ -540,68 +508,57 @@ public function getPointingsByDate(Request $request)
         ]);
     }
 
+
     public function getUsersAvailabilityToday()
-    {
-        // Check if the user is authenticated
-        if (!auth()->check()) {
-            return response()->json(['error' => 'Unauthenticated'], 401);
-        }
-        
-        $user = auth()->user();
-        
-        $today = Carbon::today()->toDateString();
-        
-        // Get all users
-        $users = User::all();
-        
-        // Create an array to store user availability status
-        $availability = [];
-        
-        // Loop through each user
-        foreach ($users as $user) {
-            // Find today's pointing record for the user
-            $pointing = Pointing::where('user_id', $user->id)
-                                ->where('date', $today)
-                                ->latest() // Get the latest record first
-                                ->first();
-    
-            // Check if there's a pointing record for today
-            if ($pointing) {
-                // Check if the user is available or not based on the status_available field
-                $availability[] = [
-                    'name' => $user->firstname,
-                    'email' => $user->email,
-                    'status_available' => $pointing->status_available,
-                ];
-            } else {
-                // If no pointing record exists, default status to not_available
-                $availability[] = [
-                    'name' => $user->firstname,
-                    'email' => $user->email,
-                    'status_available' => 'not_available',
-                ];
-            }
-        }
-        
-        return response()->json(['availability' => $availability], 200);
+{
+    // Check if the user is authenticated
+    if (!auth()->check()) {
+        return response()->json(['error' => 'Unauthenticated'], 401);
     }
+    
+    $user = auth()->user();
+    
+    $today = Carbon::today()->toDateString();
+    
+    // Get all users except the currently logged-in user
+    $users = User::where('id', '!=', $user->id)->get();
+    
+    // Create an array to store user availability status
+    $availability = [];
+    
+    // Loop through each user
+    foreach ($users as $user) {
+        // Find today's pointing record for the user
+        $pointing = Pointing::where('user_id', $user->id)
+                            ->where('date', $today)
+                            ->latest() // Get the latest record first
+                            ->first();
+
+        // Check if there's a pointing record for today
+        if ($pointing) {
+            // Check if the user is available or not based on the status_available field
+            $availability[] = [
+                'name' => $user->firstname,
+                'email' => $user->email,
+                'status_available' => $pointing->status_available,
+            ];
+        } else {
+            // If no pointing record exists, default status to not_available
+            $availability[] = [
+                'name' => $user->firstname,
+                'email' => $user->email,
+                'status_available' => 'not_available',
+            ];
+        }
+    }
+    
+    return response()->json(['availability' => $availability], 200);
+}
+
 
     
 
-    
-
-// public function getPointingsByDate(Request $request)
-// {
-//     $user = auth()->user();
-//     $date = $request->input('date', now()->toDateString()); // Default to today's date if not provided
-    
-//     // Retrieve all pointing records for the user on the specified date
-//     $pointings = Pointing::where('user_id', $user->id)
-//                         ->whereDate('date', $date)
-//                         ->get(['entre', 'sortie']);
-
-//     return response()->json(['pointings' => $pointings]);
-// }
+  
 public function getTimeWorked(Request $request)
 {
     $user = auth()->user();
@@ -637,6 +594,7 @@ public function getTimeWorked(Request $request)
 
     return response()->json(['time_worked' => $totalTimeWorked]);
 }
+
 public function timeworks(Request $request)
 {
     $user = auth()->user();
@@ -687,6 +645,248 @@ public function getAllMotifs()
     } catch (\Exception $e) {
         // Handle any exceptions and return an error response
         return response()->json(['error' => 'Failed to fetch motifs', 'message' => $e->getMessage()], 500);
+    }
+}
+// public function getAttendanceStatusAndTimeWorked(Request $request)
+// {
+//     try {
+//         // Get the user ID from the request or default to the authenticated user's ID
+//         $userId = $request->input('user_id', auth()->id());
+
+//         // Get the user's creation date
+//         $creationDateResponse = $this->getUserCreationDateFromToken($request);
+//         $creationDate = $creationDateResponse->getData()->creation_date;
+
+//         // Initialize an array to store attendance data for each date
+//         $attendanceData = [];
+
+//         // Start from the user's creation date up to today
+//         $startDate = Carbon::parse($creationDate);
+//         $endDate = Carbon::today();
+
+//         // Loop through each date from the creation date up to today
+//         while ($startDate <= $endDate) {
+//             // Format the date
+//             $date = $startDate->toDateString();
+
+//             // Find pointing records for the current date
+//             $pointings = Pointing::where('user_id', $userId)
+//                 ->whereDate('date', $date)
+//                 ->get();
+
+//             // Determine attendance status based on pointing records
+//             $attendanceStatus = $pointings->isNotEmpty() ? 'present' : 'absent';
+
+//             // Initialize total hours worked as null since there are no pointing records
+//             $totalTimeWorked = null;
+
+//             // If there are pointing records, calculate total time worked
+//             if ($pointings->isNotEmpty()) {
+//                 // Initialize total time worked seconds
+//                 $totalTimeWorkedSeconds = 0;
+
+//                 // Calculate total time worked for the current date
+//                 foreach ($pointings as $pointing) {
+//                     if ($pointing->entre) {
+//                         // Calculate time worked based on check-in and check-out times
+//                         $checkInTime = Carbon::parse($pointing->entre);
+//                         $checkOutTime = $pointing->sortie ? Carbon::parse($pointing->sortie) : Carbon::now();
+//                         $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
+
+//                         // Add to total time worked
+//                         $totalTimeWorkedSeconds += $timeWorkedSeconds;
+//                     }
+//                 }
+
+//                 // Format total time worked as HH:MM
+//                 $totalTimeWorked = gmdate('H:i', $totalTimeWorkedSeconds);
+//             }
+
+//             // Add attendance data for the current date to the array
+//             $attendanceData[] = [
+//                 'date' => $date,
+//                 'attendance_status' => $attendanceStatus,
+//                 'total_hours_worked' => $totalTimeWorked,
+//             ];
+
+//             // Move to the next date
+//             $startDate->addDay();
+//         }
+
+//         // Return response with attendance status and total hours worked for all dates
+//         return response()->json($attendanceData, 200);
+//     } catch (\Exception $e) {
+//         // Handle any exceptions and return an error response
+//         return response()->json(['error' => 'Failed to fetch attendance status and time worked', 'message' => $e->getMessage()], 500);
+//     }
+// }
+
+public function getAttendanceStatusAndTimeWorked(Request $request)
+{
+    try {
+        // Get the user ID from the request or default to the authenticated user's ID
+        $userId = $request->input('user_id', auth()->id());
+
+        // Get the user's creation date
+        $creationDateResponse = $this->getUserCreationDateFromToken($request);
+        $creationDate = $creationDateResponse->getData()->creation_date;
+
+        // Initialize an array to store attendance data for each date
+        $attendanceData = [];
+
+        // Start from the user's creation date up to today
+        $startDate = Carbon::parse($creationDate);
+        $endDate = Carbon::today();
+
+        // Loop through each date from the creation date up to today
+        while ($startDate <= $endDate) {
+            // Format the date
+            $date = $startDate->toDateString();
+
+            // Check if the user has a "conge" on the current date
+            $hasConge = Conge::where('user_id', $userId)
+                ->where('status', 'accepter') // Check if the congé request is accepted
+                ->whereDate('date_d', '<=', $date) // Check if the congé starts before or on the current date
+                ->whereDate('date_f', '>=', $date) // Check if the congé ends after or on the current date
+                ->exists();
+
+            // If the user has a congé on the current date, mark as "conge"
+            if ($hasConge) {
+                $attendanceStatus = 'conge';
+                $totalTimeWorked = null; // No need to calculate total time worked if on congé
+            } else {
+                // Find pointing records for the current date
+                $pointings = Pointing::where('user_id', $userId)
+                    ->whereDate('date', $date)
+                    ->get();
+
+                // Determine attendance status based on pointing records
+                $attendanceStatus = $pointings->isNotEmpty() ? 'present' : 'absent';
+
+                // Initialize total hours worked as null since there are no pointing records
+                $totalTimeWorked = null;
+
+                // If there are pointing records, calculate total time worked
+                if ($pointings->isNotEmpty()) {
+                    // Initialize total time worked seconds
+                    $totalTimeWorkedSeconds = 0;
+
+                    // Calculate total time worked for the current date
+                    foreach ($pointings as $pointing) {
+                        if ($pointing->entre) {
+                            // Calculate time worked based on check-in and check-out times
+                            $checkInTime = Carbon::parse($pointing->entre);
+                            $checkOutTime = $pointing->sortie ? Carbon::parse($pointing->sortie) : Carbon::now();
+                            $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
+
+                            // Add to total time worked
+                            $totalTimeWorkedSeconds += $timeWorkedSeconds;
+                        }
+                    }
+
+                    // Format total time worked as HH:MM
+                    $totalTimeWorked = gmdate('H:i', $totalTimeWorkedSeconds);
+                }
+            }
+
+            // Add attendance data for the current date to the array
+            $attendanceData[] = [
+                'date' => $date,
+                'attendance_status' => $attendanceStatus,
+                'total_hours_worked' => $totalTimeWorked,
+            ];
+
+            // Move to the next date
+            $startDate->addDay();
+        }
+
+        // Return response with attendance status, total hours worked, and conge information for all dates
+        return response()->json($attendanceData, 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to fetch attendance status and time worked', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
+
+public function getUserCreationDateFromToken(Request $request)
+{
+    try {
+        // Get the authenticated user using the token
+        $user = auth()->user();
+
+        // Get the user's creation date
+        $creationDate = $user->created_at->toDateString();
+
+        // Return the creation date
+        return response()->json(['creation_date' => $creationDate], 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to fetch user creation date', 'message' => $e->getMessage()], 500);
+    }
+}
+
+public function onlinwork(Request $request)
+{
+    try {
+        // Check if the user is authenticated
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
+        $user = Auth::user();
+
+        // Check if the user has already submitted a request for the specified date
+        $existingRequest = Workremote::where('user_id', $user->id)
+            ->whereDate('date', $request->input('date'))
+            ->first();
+
+        if ($existingRequest) {
+            return response()->json(['error' => 'You have already submitted a request for this date.'], 400);
+        }
+
+        // Validate the incoming request data
+        $validator = Validator::make($request->all(), [
+            'reason' => 'required|string',
+            'date' => 'required|date', // Add validation rule for date parameter
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 400);
+        }
+
+        // Create the work mode change request
+        $workonline = Workremote::create([
+            'user_id' => $user->id,
+            'reason' => $request->input('reason'),
+            'date' => $request->input('date'), // Store the date in the database
+            'status' => 'en_cours', // Status is initially set to 'en_cours'
+        ]);
+
+        return response()->json(['message' => 'Work mode change request created successfully', 'workonline' => $workonline], 201);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to create work mode change request', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
+public function getAllWorkOnlineRequests(Request $request)
+{
+    try {
+        // Check if the user is authenticated
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
+        $user = Auth::user();
+
+        // Fetch all work mode change requests for the authenticated user
+        $workOnlineRequests = Workremote::where('user_id', $user->id)->get();
+
+        return response()->json(['workonline' => $workOnlineRequests], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch work mode change requests', 'message' => $e->getMessage()], 500);
     }
 }
 

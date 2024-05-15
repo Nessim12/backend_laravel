@@ -8,6 +8,7 @@ use App\Models\Conge;
 use App\Models\Motif;
 use App\Models\Pointing;
 use App\Models\User;
+use App\Models\Workremote;
 use Carbon\CarbonInterval;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -75,6 +76,7 @@ class AdminController extends Controller
         'tel' => $request->input('tel'),
         'adresse' => $request->input('adresse'),
         'genre' => $request->input('genre'),
+        'work_mod' => 'presentiel',
         'soldecongée' => 20, // Set the default value for soldecongée
         'avatar' => $avatarPath, // Set default avatar path
     ]);
@@ -96,6 +98,155 @@ class AdminController extends Controller
         'password' => $password
     ]);
 }
+
+// public function updateonlinework(Request $request, $id)
+// {
+//     try {
+//         $meResponse = $this->me();
+
+//         if (isset($meResponse['error'])) {
+//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
+//         }
+
+//         if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
+//         }
+
+//         // Find the work mode change request by ID
+//         $workonline = Workremote::find($id);
+
+//         // If work mode change request not found, return error response
+//         if (!$workonline) {
+//             return response()->json(['error' => 'Work mode change request not found'], 404);
+//         }
+
+//         // Get the user associated with the work mode change request
+//         $user = $workonline->user;
+
+//         // If user not found, return error response
+//         if (!$user) {
+//             return response()->json(['error' => 'User not found'], 404);
+//         }
+
+//         // Validate the incoming request data
+//         $validatedData = $request->validate([
+//             'status' => 'required|in:accepted,refused',
+//         ]);
+
+//         // Update the status of the work mode change request
+//         $workonline->status = $validatedData['status'];
+//         $workonline->save();
+
+//         // If status is 'accepted', update the user's work mode to 'accepter'
+//         if ($validatedData['status'] === 'accepted') {
+//             $user->work_mod = 'accepter';
+//             $user->save();
+
+//             // Revert work_mod back to 'presentiel' for the user the next day
+//             dispatch(function () use ($user) {
+//                 sleep(86400); // Sleep for 1 day (86400 seconds)
+//                 $user->work_mod = 'presentiel';
+//                 $user->save();
+//             });
+//         }
+
+//         return response()->json(['message' => 'Work mode change request updated successfully'], 200);
+//     } catch (\Exception $e) {
+//         return response()->json(['error' => 'Failed to update work mode change request', 'message' => $e->getMessage()], 500);
+//     }
+// }
+
+public function updateonlinework(Request $request, $id)
+{
+    try {
+        $meResponse = $this->me();
+
+        if (isset($meResponse['error'])) {
+            return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
+        }
+
+        if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+            return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
+        }
+
+        // Find the work mode change request by ID
+        $workonline = Workremote::find($id);
+
+        // If work mode change request not found, return error response
+        if (!$workonline) {
+            return response()->json(['error' => 'Work mode change request not found'], 404);
+        }
+
+        // Validate the incoming request data
+        $validatedData = $request->validate([
+            'status' => 'required|in:accepted,refused',
+        ]);
+
+        // Update the status of the work mode change request
+        $workonline->status = $validatedData['status'];
+        $workonline->save();
+
+        return response()->json(['message' => 'Work mode change request updated successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to update work mode change request', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// public function updateonlinework(Request $request, $id)
+// {
+//     try {
+//         $meResponse = $this->me();
+
+//         if (isset($meResponse['error'])) {
+//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
+//         }
+
+//         if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
+//         }
+
+//         // Find the work mode change request by ID
+//         $workonline = Workremote::find($id);
+
+//         // If work mode change request not found, return error response
+//         if (!$workonline) {
+//             return response()->json(['error' => 'Work mode change request not found'], 404);
+//         }
+
+//         // Validate the incoming request data
+//         $validatedData = $request->validate([
+//             'status' => 'required|in:accepted,refused',
+//         ]);
+
+//         // Update the status of the work mode change request
+//         $workonline->status = $validatedData['status'];
+//         $workonline->save();
+
+//         // If status is 'accepted', update the user's work mode to 'accepter' for the specified date
+//         if ($validatedData['status'] === 'accepted') {
+//             $user = $workonline->user;
+//             $user->work_mod = 'accepter';
+//             $user->save();
+
+//             // Revert work_mod attribute to 'presentiel' after the specified date has passed
+//             $date = Carbon::parse($workonline->date)->addDay();
+//             if (Carbon::now()->gt($date)) {
+//                 $user->work_mod = 'presentiel';
+//                 $user->save();
+//             }
+//         } else {
+//             // If status is 'refused', set the user's work mode to 'presentiel'
+//             $user = $workonline->user;
+//             $user->work_mod = 'presentiel';
+//             $user->save();
+//         }
+
+//         return response()->json(['message' => 'Work mode change request updated successfully'], 200);
+//     } catch (\Exception $e) {
+//         return response()->json(['error' => 'Failed to update work mode change request', 'message' => $e->getMessage()], 500);
+//     }
+// }
+
 
 public function updateUser(Request $request, $id)
 {
@@ -259,15 +410,17 @@ public function me()
     }
 
 
-
     public function login(Request $request)
     {
         $credentials = $request->only('email', 'password');
-
+    
         if (Auth::guard('admin')->attempt($credentials)) {
             $admin = Auth::guard('admin')->user();
             $token = $admin->createToken('authToken')->plainTextToken;
-
+    
+            // Call the updateWorkModeAutomatically method
+            $this->updateWorkModeAutomatically();
+    
             return response()->json([
                 'access_token' => $token,
                 'token_type' => 'Bearer',
@@ -275,10 +428,44 @@ public function me()
                 'admin' => $admin,
             ]);
         }
-
+    
         return response()->json(['error' => 'Unauthorized'], 401);
     }
-
+    
+    public function updateWorkModeAutomatically()
+    {
+        try {
+            // Get today's date
+            $today = Carbon::today();
+    
+            // Get all users
+            $users = User::all();
+    
+            // Loop through each user
+            foreach ($users as $user) {
+                // Check if the user has an online work request for today with an accepted status
+                $onlineWorkRequest = Workremote::where('user_id', $user->id)
+                    ->whereDate('date', $today)
+                    ->where('status', 'accepted')
+                    ->first();
+    
+                // If an online work request exists for today and it's accepted, set work_mod to 'accepter'
+                // Otherwise, set work_mod to 'presentiel'
+                if ($onlineWorkRequest) {
+                    $user->work_mod = 'accepter';
+                } else {
+                    $user->work_mod = 'presentiel';
+                }
+    
+                // Save the changes
+                $user->save();
+            }
+    
+            return response()->json(['message' => 'Work mode updated successfully'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to update work mode', 'message' => $e->getMessage()], 500);
+        }
+    }
 
 
     public function countUsers()
@@ -659,6 +846,7 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
                 'firstname' => $user->firstname,
                 'lastname' => $user->lastname,
                 'tel' => $user->tel,
+                'work_mod' => $user->work_mod,
                 'email' => $user->email,
                 'status' => $status,
                 'availability' => $availability,
@@ -730,6 +918,21 @@ public function getAllMotifs()
         return response()->json(['error' => 'Failed to fetch motifs', 'message' => $e->getMessage()], 500);
     }
 }
+public function getAllOnlineWork()
+{
+    try {
+        // Retrieve all online work change requests with the associated user's firstname and lastname
+        $onlineWorkRequests = Workremote::with('user:id,firstname,lastname')->get();
+
+        // Return the list of online work change requests as JSON response
+        return response()->json(['workonline' => $onlineWorkRequests], 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to fetch online work change requests', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
 
 
 }
