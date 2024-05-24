@@ -19,7 +19,7 @@ class CreatePointingsTable extends Migration
             $table->timestamp('entre')->nullable();
             $table->timestamp('sortie')->nullable();
             $table->date('date')->nullable();
-            $table->enum('statusjour',['absent','present'])->default('absent');
+            $table->enum('statusjour', ['absent', 'present', 'holiday'])->default('absent');
             $table->enum('status_available',['available','not_available'])->default('not_available');
             $table->timestamps();
         });

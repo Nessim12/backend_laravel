@@ -647,79 +647,7 @@ public function getAllMotifs()
         return response()->json(['error' => 'Failed to fetch motifs', 'message' => $e->getMessage()], 500);
     }
 }
-// public function getAttendanceStatusAndTimeWorked(Request $request)
-// {
-//     try {
-//         // Get the user ID from the request or default to the authenticated user's ID
-//         $userId = $request->input('user_id', auth()->id());
 
-//         // Get the user's creation date
-//         $creationDateResponse = $this->getUserCreationDateFromToken($request);
-//         $creationDate = $creationDateResponse->getData()->creation_date;
-
-//         // Initialize an array to store attendance data for each date
-//         $attendanceData = [];
-
-//         // Start from the user's creation date up to today
-//         $startDate = Carbon::parse($creationDate);
-//         $endDate = Carbon::today();
-
-//         // Loop through each date from the creation date up to today
-//         while ($startDate <= $endDate) {
-//             // Format the date
-//             $date = $startDate->toDateString();
-
-//             // Find pointing records for the current date
-//             $pointings = Pointing::where('user_id', $userId)
-//                 ->whereDate('date', $date)
-//                 ->get();
-
-//             // Determine attendance status based on pointing records
-//             $attendanceStatus = $pointings->isNotEmpty() ? 'present' : 'absent';
-
-//             // Initialize total hours worked as null since there are no pointing records
-//             $totalTimeWorked = null;
-
-//             // If there are pointing records, calculate total time worked
-//             if ($pointings->isNotEmpty()) {
-//                 // Initialize total time worked seconds
-//                 $totalTimeWorkedSeconds = 0;
-
-//                 // Calculate total time worked for the current date
-//                 foreach ($pointings as $pointing) {
-//                     if ($pointing->entre) {
-//                         // Calculate time worked based on check-in and check-out times
-//                         $checkInTime = Carbon::parse($pointing->entre);
-//                         $checkOutTime = $pointing->sortie ? Carbon::parse($pointing->sortie) : Carbon::now();
-//                         $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
-
-//                         // Add to total time worked
-//                         $totalTimeWorkedSeconds += $timeWorkedSeconds;
-//                     }
-//                 }
-
-//                 // Format total time worked as HH:MM
-//                 $totalTimeWorked = gmdate('H:i', $totalTimeWorkedSeconds);
-//             }
-
-//             // Add attendance data for the current date to the array
-//             $attendanceData[] = [
-//                 'date' => $date,
-//                 'attendance_status' => $attendanceStatus,
-//                 'total_hours_worked' => $totalTimeWorked,
-//             ];
-
-//             // Move to the next date
-//             $startDate->addDay();
-//         }
-
-//         // Return response with attendance status and total hours worked for all dates
-//         return response()->json($attendanceData, 200);
-//     } catch (\Exception $e) {
-//         // Handle any exceptions and return an error response
-//         return response()->json(['error' => 'Failed to fetch attendance status and time worked', 'message' => $e->getMessage()], 500);
-//     }
-// }
 
 public function getAttendanceStatusAndTimeWorked(Request $request)
 {
@@ -743,49 +671,56 @@ public function getAttendanceStatusAndTimeWorked(Request $request)
             // Format the date
             $date = $startDate->toDateString();
 
-            // Check if the user has a "conge" on the current date
-            $hasConge = Conge::where('user_id', $userId)
-                ->where('status', 'accepter') // Check if the congé request is accepted
-                ->whereDate('date_d', '<=', $date) // Check if the congé starts before or on the current date
-                ->whereDate('date_f', '>=', $date) // Check if the congé ends after or on the current date
-                ->exists();
-
-            // If the user has a congé on the current date, mark as "conge"
-            if ($hasConge) {
-                $attendanceStatus = 'conge';
-                $totalTimeWorked = null; // No need to calculate total time worked if on congé
+            // Check if the current date is a Sunday
+            if ($startDate->dayOfWeek === Carbon::SUNDAY) {
+                // Mark Sundays as holidays
+                $attendanceStatus = 'holiday';
+                $totalTimeWorked = null; // No need to calculate total time worked if it's a holiday
             } else {
-                // Find pointing records for the current date
-                $pointings = Pointing::where('user_id', $userId)
-                    ->whereDate('date', $date)
-                    ->get();
+                // Check if the user has a "conge" on the current date
+                $hasConge = Conge::where('user_id', $userId)
+                    ->where('status', 'accepter') // Check if the congé request is accepted
+                    ->whereDate('date_d', '<=', $date) // Check if the congé starts before or on the current date
+                    ->whereDate('date_f', '>=', $date) // Check if the congé ends after or on the current date
+                    ->exists();
 
-                // Determine attendance status based on pointing records
-                $attendanceStatus = $pointings->isNotEmpty() ? 'present' : 'absent';
+                // If the user has a congé on the current date, mark as "conge"
+                if ($hasConge) {
+                    $attendanceStatus = 'conge';
+                    $totalTimeWorked = null; // No need to calculate total time worked if on congé
+                } else {
+                    // Find pointing records for the current date
+                    $pointings = Pointing::where('user_id', $userId)
+                        ->whereDate('date', $date)
+                        ->get();
 
-                // Initialize total hours worked as null since there are no pointing records
-                $totalTimeWorked = null;
+                    // Determine attendance status based on pointing records
+                    $attendanceStatus = $pointings->isNotEmpty() ? 'present' : 'absent';
 
-                // If there are pointing records, calculate total time worked
-                if ($pointings->isNotEmpty()) {
-                    // Initialize total time worked seconds
-                    $totalTimeWorkedSeconds = 0;
+                    // Initialize total hours worked as null since there are no pointing records
+                    $totalTimeWorked = null;
 
-                    // Calculate total time worked for the current date
-                    foreach ($pointings as $pointing) {
-                        if ($pointing->entre) {
-                            // Calculate time worked based on check-in and check-out times
-                            $checkInTime = Carbon::parse($pointing->entre);
-                            $checkOutTime = $pointing->sortie ? Carbon::parse($pointing->sortie) : Carbon::now();
-                            $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
+                    // If there are pointing records, calculate total time worked
+                    if ($pointings->isNotEmpty()) {
+                        // Initialize total time worked seconds
+                        $totalTimeWorkedSeconds = 0;
 
-                            // Add to total time worked
-                            $totalTimeWorkedSeconds += $timeWorkedSeconds;
+                        // Calculate total time worked for the current date
+                        foreach ($pointings as $pointing) {
+                            if ($pointing->entre) {
+                                // Calculate time worked based on check-in and check-out times
+                                $checkInTime = Carbon::parse($pointing->entre);
+                                $checkOutTime = $pointing->sortie ? Carbon::parse($pointing->sortie) : Carbon::now();
+                                $timeWorkedSeconds = $checkOutTime->diffInSeconds($checkInTime);
+
+                                // Add to total time worked
+                                $totalTimeWorkedSeconds += $timeWorkedSeconds;
+                            }
                         }
-                    }
 
-                    // Format total time worked as HH:MM
-                    $totalTimeWorked = gmdate('H:i', $totalTimeWorkedSeconds);
+                        // Format total time worked as HH:MM
+                        $totalTimeWorked = gmdate('H:i', $totalTimeWorkedSeconds);
+                    }
                 }
             }
 

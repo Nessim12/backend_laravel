@@ -10,7 +10,7 @@
     <div class="container text-center">
         <div class="row">
             <div class="col">
-                <p class="mb-0">Simple</p>
+<br/>
       {{ $qrCode }}
             </div>
       

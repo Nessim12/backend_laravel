@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\RegisterConfirmation;
 use App\Models\Admin;
 use App\Models\Conge;
+use App\Models\Holiday;
 use App\Models\Motif;
 use App\Models\Pointing;
 use App\Models\User;
@@ -60,7 +61,7 @@ class AdminController extends Controller
     $password = Str::random(8);
 
     // Set default avatar based on gender
-    $defaultAvatar = $request->input('genre') === 'men' ? 'avatarmen.jpg' : 'womenavatar.png';
+    $defaultAvatar = $request->input('genre') === 'men' ? 'avatarmen1.jpg' : 'womenavatar.jpg';
 
     // Move default avatar to public disk
     $avatarPath = "avatars/$defaultAvatar";
@@ -99,62 +100,7 @@ class AdminController extends Controller
     ]);
 }
 
-// public function updateonlinework(Request $request, $id)
-// {
-//     try {
-//         $meResponse = $this->me();
 
-//         if (isset($meResponse['error'])) {
-//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
-//         }
-
-//         if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
-//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
-//         }
-
-//         // Find the work mode change request by ID
-//         $workonline = Workremote::find($id);
-
-//         // If work mode change request not found, return error response
-//         if (!$workonline) {
-//             return response()->json(['error' => 'Work mode change request not found'], 404);
-//         }
-
-//         // Get the user associated with the work mode change request
-//         $user = $workonline->user;
-
-//         // If user not found, return error response
-//         if (!$user) {
-//             return response()->json(['error' => 'User not found'], 404);
-//         }
-
-//         // Validate the incoming request data
-//         $validatedData = $request->validate([
-//             'status' => 'required|in:accepted,refused',
-//         ]);
-
-//         // Update the status of the work mode change request
-//         $workonline->status = $validatedData['status'];
-//         $workonline->save();
-
-//         // If status is 'accepted', update the user's work mode to 'accepter'
-//         if ($validatedData['status'] === 'accepted') {
-//             $user->work_mod = 'accepter';
-//             $user->save();
-
-//             // Revert work_mod back to 'presentiel' for the user the next day
-//             dispatch(function () use ($user) {
-//                 sleep(86400); // Sleep for 1 day (86400 seconds)
-//                 $user->work_mod = 'presentiel';
-//                 $user->save();
-//             });
-//         }
-
-//         return response()->json(['message' => 'Work mode change request updated successfully'], 200);
-//     } catch (\Exception $e) {
-//         return response()->json(['error' => 'Failed to update work mode change request', 'message' => $e->getMessage()], 500);
-//     }
-// }
 
 public function updateonlinework(Request $request, $id)
 {
@@ -192,60 +138,6 @@ public function updateonlinework(Request $request, $id)
     }
 }
 
-// public function updateonlinework(Request $request, $id)
-// {
-//     try {
-//         $meResponse = $this->me();
-
-//         if (isset($meResponse['error'])) {
-//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
-//         }
-
-//         if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
-//             return response()->json(['error' => 'Unauthorized. Only admins can update work mode change requests.'], 401);
-//         }
-
-//         // Find the work mode change request by ID
-//         $workonline = Workremote::find($id);
-
-//         // If work mode change request not found, return error response
-//         if (!$workonline) {
-//             return response()->json(['error' => 'Work mode change request not found'], 404);
-//         }
-
-//         // Validate the incoming request data
-//         $validatedData = $request->validate([
-//             'status' => 'required|in:accepted,refused',
-//         ]);
-
-//         // Update the status of the work mode change request
-//         $workonline->status = $validatedData['status'];
-//         $workonline->save();
-
-//         // If status is 'accepted', update the user's work mode to 'accepter' for the specified date
-//         if ($validatedData['status'] === 'accepted') {
-//             $user = $workonline->user;
-//             $user->work_mod = 'accepter';
-//             $user->save();
-
-//             // Revert work_mod attribute to 'presentiel' after the specified date has passed
-//             $date = Carbon::parse($workonline->date)->addDay();
-//             if (Carbon::now()->gt($date)) {
-//                 $user->work_mod = 'presentiel';
-//                 $user->save();
-//             }
-//         } else {
-//             // If status is 'refused', set the user's work mode to 'presentiel'
-//             $user = $workonline->user;
-//             $user->work_mod = 'presentiel';
-//             $user->save();
-//         }
-
-//         return response()->json(['message' => 'Work mode change request updated successfully'], 200);
-//     } catch (\Exception $e) {
-//         return response()->json(['error' => 'Failed to update work mode change request', 'message' => $e->getMessage()], 500);
-//     }
-// }
 
 
 public function updateUser(Request $request, $id)
@@ -331,7 +223,35 @@ public function updateUser(Request $request, $id)
             return response()->json(['error' => 'Failed to fetch users', 'message' => $e->getMessage()], 500);
         }
     }
-
+    public function getUserDetails($id)
+    {
+        try {
+            // Check if the authenticated user is an admin
+            $meResponse = $this->me();
+    
+            if (isset($meResponse['error'])) {
+                return response()->json(['error' => 'Unauthorized. Only admins can view user details.'], 401);
+            }
+    
+            if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+                return response()->json(['error' => 'Unauthorized. Only admins can view user details.'], 401);
+            }
+    
+            // Fetch the user with their conge and work online requests
+            $user = User::find($id);
+    
+            if (!$user) {
+                return response()->json(['error' => 'User not found'], 404);
+            }
+    
+            // Return the detailed data as a JSON response
+            return response()->json(['user' => $user], 200);
+        } catch (\Exception $e) {
+            // Handle any exceptions and return an error response
+            return response()->json(['error' => 'Failed to fetch user details', 'message' => $e->getMessage()], 500);
+        }
+    }
+    
 
     public function deleteUser($id)
     {
@@ -814,30 +734,52 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
 
         // Loop through each user
         foreach ($users as $user) {
-            // Find pointing record for the user on the specified date
-            $pointing = Pointing::where('user_id', $user->id)
-                                ->whereDate('date', $date)
-                                ->orderBy('created_at', 'desc') // Order by creation time to get the latest record
-                                ->first();
-
-            // Determine user status based on pointing record
-            $status = $pointing && $pointing->entre ? 'present' : 'absent';
+            // Determine user status
+            $status = 'absent'; // Default status is absent
 
             // Initialize availability and time worked
             $availability = null;
             $timeWorked = null;
 
-            // Calculate availability and time worked if pointing record exists
-            if ($pointing && $pointing->entre) {
-                // Determine availability based on check-out status
-                $availability = $pointing->sortie ? 'not_available' : 'available';
+            // Check if today is a holiday
+            $isHoliday = Holiday::whereDate('holiday_date', $date)->exists();
 
-                // Calculate time worked using the timeworks function for the specific user and date
-                $timeWorked = $this->timeworks($user->id, $date);
+            // If today is not a holiday, check user's pointing record
+            if (!$isHoliday) {
+                // Find pointing record for the user on the specified date
+                $pointing = Pointing::where('user_id', $user->id)
+                                    ->whereDate('date', $date)
+                                    ->orderBy('created_at', 'desc') // Order by creation time to get the latest record
+                                    ->first();
+
+                // Determine user status based on pointing record
+                $status = $pointing && $pointing->entre ? 'present' : 'absent';
+
+                // Calculate availability and time worked if pointing record exists
+                if ($pointing && $pointing->entre) {
+                    // Determine availability based on check-out status
+                    $availability = $pointing->sortie ? 'not_available' : 'available';
+
+                    // Calculate time worked using the timeworks function for the specific user and date
+                    $timeWorked = $this->timeworks($user->id, $date);
+                } else {
+                    // No pointing record for the specified date
+                    $availability = 'not_available';
+                }
             } else {
-                // No pointing record for the specified date
-                $availability = 'not_available';
+                // Today is a holiday, set status to 'Holiday'
+                $status = 'Holiday';
             }
+
+            // Check if the user has an online work request for today with an accepted status
+            $onlineWorkRequest = Workremote::where('user_id', $user->id)
+                ->whereDate('date', $date)
+                ->where('status', 'accepted')
+                ->exists();
+
+            // If an online work request exists for today and it's accepted, set work_mod to 'accepter'
+            // Otherwise, set work_mod to 'presentiel'
+            $work_mod = $onlineWorkRequest ? 'accepter' : 'presentiel';
 
             // Add user status, availability, and time worked to the array
             $userStatuses[] = [
@@ -846,7 +788,7 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
                 'firstname' => $user->firstname,
                 'lastname' => $user->lastname,
                 'tel' => $user->tel,
-                'work_mod' => $user->work_mod,
+                'work_mod' => $work_mod, // Update work_mod based on online work request
                 'email' => $user->email,
                 'status' => $status,
                 'availability' => $availability,
@@ -861,6 +803,130 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
         return response()->json(['error' => 'Failed to get user statuses and availability', 'message' => $e->getMessage()], 500);
     }
 }
+
+public function getUserDailyWorkTime($id, Request $request)
+{
+    try {
+        $startDate = Carbon::parse($request->input('start_date', now()->startOfMonth()));
+        $endDate = Carbon::parse($request->input('end_date', now()->endOfMonth()));
+
+        // Validate if the user exists
+        $user = User::find($id);
+        if (!$user) {
+            return response()->json(['error' => 'User not found'], 404);
+        }
+
+        $dailyWorkTimes = [];
+
+        for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
+            $dateString = $date->toDateString();
+            $timeWorked = $this->timeworks($user->id, $dateString);
+            $dailyWorkTimes[] = [
+                'date' => $dateString,
+                'time_worked' => $timeWorked,
+            ];
+        }
+
+        $userWorkTimes = [
+            'user_id' => $user->id,
+            'cin' => $user->cin,
+            'firstname' => $user->firstname,
+            'lastname' => $user->lastname,
+            'tel' => $user->tel,
+            'email' => $user->email,
+            'daily_work_times' => $dailyWorkTimes,
+        ];
+
+        return response()->json(['user_work_times' => $userWorkTimes], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to get user daily work times', 'message' => $e->getMessage()], 500);
+    }
+}
+
+public function getUserMonthlyWorkTimes($id, Request $request)
+{
+    try {
+        // Get the selected year and month from the request
+        $year = $request->input('year', now()->year); // Default to the current year if not provided
+        $month = $request->input('month'); // Get the selected month from the request
+
+        // Validate if the user exists
+        $user = User::find($id);
+        if (!$user) {
+            return response()->json(['error' => 'User not found'], 404);
+        }
+
+        $monthlyWorkTimes = [];
+
+        // Determine the range of months to process
+        $months = $month ? [$month] : range(1, 12);
+
+        // Loop through each specified month to calculate the total work time and presence/absence
+        foreach ($months as $month) {
+            $startDate = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+            $endDate = Carbon::createFromDate($year, $month, 1)->endOfMonth();
+
+            // Get all pointing records for the user within the specified date range
+            $pointingRecords = Pointing::where('user_id', $id)
+                                        ->whereBetween('date', [$startDate, $endDate])
+                                        ->get();
+
+            $totalTimeWorked = 0; // Initialize total time worked
+            $presentDays = collect(); // Use a collection to store present days
+
+            // Calculate total time worked for the month and count present days
+            foreach ($pointingRecords as $record) {
+                if ($record->entre && $record->sortie) {
+                    // Calculate time difference between check-in and check-out times
+                    $checkIn = Carbon::parse($record->entre);
+                    $checkOut = Carbon::parse($record->sortie);
+                    $timeWorked = $checkOut->diffInMinutes($checkIn); // Calculate time difference in minutes
+                    $totalTimeWorked += $timeWorked;
+                    // Add the date to the collection of present days
+                    $presentDays->put($record->date, true);
+                }
+            }
+
+            // Count unique present days
+            $uniquePresentDaysCount = $presentDays->count();
+            // Calculate total days in the month
+            $totalDaysInMonth = $startDate->daysInMonth;
+            // Calculate absent days
+            $absentDays = $totalDaysInMonth - $uniquePresentDaysCount;
+
+            // Convert total time worked from minutes to hours and minutes format
+            $hours = floor($totalTimeWorked / 60);
+            $minutes = $totalTimeWorked % 60;
+
+            // Format the total time worked
+            $formattedTotalTimeWorked = sprintf('%02d:%02d', $hours, $minutes);
+
+            // Store the result for the current month
+            $monthlyWorkTimes[] = [
+                'month' => $month,
+                'total_work_time' => $formattedTotalTimeWorked,
+                'present_days' => $uniquePresentDaysCount,
+                'absent_days' => $absentDays
+            ];
+        }
+
+        // Prepare the response data
+        $userWorkTimes = [
+            'firstname' => $user->firstname,
+            'lastname' => $user->lastname,
+            'year' => $year,
+            'monthly_work_times' => $monthlyWorkTimes
+        ];
+
+        // Return the user work times for the specified months
+        return response()->json($userWorkTimes, 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to get user monthly work times', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
+
 public function addMotif(Request $request)
 {
     $validator = Validator::make($request->all(), [
@@ -931,7 +997,55 @@ public function getAllOnlineWork()
         return response()->json(['error' => 'Failed to fetch online work change requests', 'message' => $e->getMessage()], 500);
     }
 }
+public function addholiday(Request $request)
+    {
+        $request->validate([
+            'holiday_date' => 'required|date',
+            'holiday_name' => 'required|string',
+        ]);
 
+        $holiday = Holiday::create([
+            'holiday_date' => $request->input('holiday_date'),
+            'holiday_name' => $request->input('holiday_name'),
+        ]);
+
+        return response()->json(['message' => 'Holiday created successfully', 'holiday' => $holiday], 201);
+    }
+
+    public function updateHoliday(Request $request, $id)
+    {
+        $request->validate([
+            'holiday_date' => 'required|date',
+            'holiday_name' => 'required|string',
+        ]);
+    
+        $holiday = Holiday::findOrFail($id);
+    
+        $holiday->update([
+            'holiday_date' => $request->input('holiday_date'),
+            'holiday_name' => $request->input('holiday_name'),
+        ]);
+    
+        return response()->json(['message' => 'Holiday updated successfully', 'holiday' => $holiday], 200);
+    }
+
+    public function deleteHoliday($id)
+{
+    $holiday = Holiday::findOrFail($id);
+
+    $holiday->delete();
+
+    return response()->json(['message' => 'Holiday deleted successfully'], 200);
+}
+public function getAllHolidays()
+{
+    try {
+        $holidays = Holiday::all();
+        return response()->json($holidays, 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch holidays', 'message' => $e->getMessage()], 500);
+    }
+}
 
 
 

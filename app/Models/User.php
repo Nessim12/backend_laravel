@@ -50,4 +50,10 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+
+    public function conges()
+{
+    return $this->hasMany(Conge::class);
+}
+
 }

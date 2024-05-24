@@ -51,6 +51,7 @@ Route::prefix('admin')->group(function () {
         Route::get('/user', [AdminController::class, 'me']);
         Route::get('/countUsers', [AdminController::class, 'countUsers']);
         Route::get('/users', [AdminController::class, 'getAllUsers']);
+        Route::get('/userdetails/{id}', [AdminController::class, 'getUserDetails']);
         Route::post('/adduser', [AdminController::class, 'addUser']);
         Route::put('/updateuser/{id}', [AdminController::class, 'updateUser']);
         Route::post('/addmotif', [AdminController::class, 'addMotif']);
@@ -64,10 +65,15 @@ Route::prefix('admin')->group(function () {
         Route::get('/alluseretat', [AdminController::class, 'getUserStatusForToday']);
         Route::get('/alluserpresent', [AdminController::class, 'countUsersPresentToday']);
         Route::post('/alluseretatwithdate', [AdminController::class, 'getUserStatusesAndAvailabilityForDate']);
+        Route::post('/getUserDailyWorkTime/{id}', [AdminController::class, 'getUserMonthlyWorkTimes']);
         Route::get('/alluseravaibleadmin', [AdminController::class, 'getUsersAvailabilityToday']);
         Route::post('/timeworks', [AdminController::class, 'timeworks']);
         Route::get('/allonlinework', [AdminController::class, 'getAllOnlineWork']);
         Route::put('/updateonline/{id}', [AdminController::class, 'updateonlinework']);
+        Route::post('/addholiday', [AdminController::class, 'addholiday']);
+        Route::put('/updateholiday/{id}', [AdminController::class, 'updateHoliday']);
+        Route::delete('/deleteholiday/{id}', [AdminController::class, 'deleteHoliday']);
+        Route::get('/holidays', [AdminController::class, 'getAllHolidays']);  
         // Add more admin-specific routes here...
     });
 });
