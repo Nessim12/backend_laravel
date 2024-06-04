@@ -20,9 +20,12 @@ Route::prefix('user')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [UserController::class, 'logout']);
         Route::get('/user', [UserController::class, 'me']);
+        Route::get('/isHolidayToday', [UserController::class, 'isHolidayToday']);
         Route::post('/update', [UserController::class, 'update']);
         Route::post('/updateavatar', [UserController::class, 'updateAvatar']);
         Route::post('/demande', [UserController::class, 'create_demande']);
+        Route::put('/update_demande/{id}', [UserController::class, 'update_demande']);
+        Route::delete('/delete_demande/{id}', [UserController::class, 'delete_demande']);
         Route::get('/allmotifs', [UserController::class, 'getAllMotifs']);
         Route::get('/showdemande', [UserController::class, 'show_demandes']);
         Route::post('/scan', [UserController::class, 'scanQRCodeAndDecryptData']);
@@ -36,8 +39,9 @@ Route::prefix('user')->group(function () {
         Route::get('/calendrie', [UserController::class, 'getAttendanceStatusAndTimeWorked']);
         Route::get('/datecreate', [UserController::class, 'getUserCreationDateFromToken']);
         Route::post('/onlinwork', [UserController::class, 'onlinwork']);
+        Route::delete('/deleteWorkRequest/{id}', [UserController::class, 'deleteWorkRequest']);
         Route::get('/showonlinwork', [UserController::class, 'getAllWorkOnlineRequests']);
-
+        Route::get('/showholidays', [UserController::class, 'showholidays']);
         // Add more user-specific routes here...
     });
 });

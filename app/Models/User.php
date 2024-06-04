@@ -55,5 +55,8 @@ class User extends Authenticatable
 {
     return $this->hasMany(Conge::class);
 }
-
+public function pointings()
+{
+    return $this->hasMany(Pointing::class);
+}
 }

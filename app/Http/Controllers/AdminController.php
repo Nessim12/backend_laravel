@@ -744,8 +744,22 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
             // Check if today is a holiday
             $isHoliday = Holiday::whereDate('holiday_date', $date)->exists();
 
-            // If today is not a holiday, check user's pointing record
-            if (!$isHoliday) {
+            // Check if the user has a leave (congé) request for today
+            $hasLeave = conge::where('user_id', $user->id)
+                                    ->where('status', 'accepter')
+                                    ->where(function($query) use ($date) {
+                                        $query->whereDate('date_d', '<=', $date)
+                                              ->whereDate('date_f', '>=', $date);
+                                    })
+                                    ->exists();
+
+            if ($isHoliday) {
+                // Today is a holiday, set status to 'Holiday'
+                $status = 'Holiday';
+            } elseif ($hasLeave) {
+                // User has an accepted leave request for today, set status to 'Conge'
+                $status = 'Conge';
+            } else {
                 // Find pointing record for the user on the specified date
                 $pointing = Pointing::where('user_id', $user->id)
                                     ->whereDate('date', $date)
@@ -766,9 +780,6 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
                     // No pointing record for the specified date
                     $availability = 'not_available';
                 }
-            } else {
-                // Today is a holiday, set status to 'Holiday'
-                $status = 'Holiday';
             }
 
             // Check if the user has an online work request for today with an accepted status
@@ -803,6 +814,90 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
         return response()->json(['error' => 'Failed to get user statuses and availability', 'message' => $e->getMessage()], 500);
     }
 }
+
+// public function getUserStatusesAndAvailabilityForDate(Request $request)
+// {
+//     try {
+//         // Get the date from the request or default to today's date
+//         $date = $request->input('date', now()->toDateString());
+
+//         // Get all users
+//         $users = User::all();
+
+//         // Array to store user statuses, availability, and time worked
+//         $userStatuses = [];
+
+//         // Loop through each user
+//         foreach ($users as $user) {
+//             // Determine user status
+//             $status = 'absent'; // Default status is absent
+
+//             // Initialize availability and time worked
+//             $availability = null;
+//             $timeWorked = null;
+
+//             // Check if today is a holiday
+//             $isHoliday = Holiday::whereDate('holiday_date', $date)->exists();
+
+//             // If today is not a holiday, check user's pointing record
+//             if (!$isHoliday) {
+//                 // Find pointing record for the user on the specified date
+//                 $pointing = Pointing::where('user_id', $user->id)
+//                                     ->whereDate('date', $date)
+//                                     ->orderBy('created_at', 'desc') // Order by creation time to get the latest record
+//                                     ->first();
+
+//                 // Determine user status based on pointing record
+//                 $status = $pointing && $pointing->entre ? 'present' : 'absent';
+
+//                 // Calculate availability and time worked if pointing record exists
+//                 if ($pointing && $pointing->entre) {
+//                     // Determine availability based on check-out status
+//                     $availability = $pointing->sortie ? 'not_available' : 'available';
+
+//                     // Calculate time worked using the timeworks function for the specific user and date
+//                     $timeWorked = $this->timeworks($user->id, $date);
+//                 } else {
+//                     // No pointing record for the specified date
+//                     $availability = 'not_available';
+//                 }
+//             } else {
+//                 // Today is a holiday, set status to 'Holiday'
+//                 $status = 'Holiday';
+//             }
+
+//             // Check if the user has an online work request for today with an accepted status
+//             $onlineWorkRequest = Workremote::where('user_id', $user->id)
+//                 ->whereDate('date', $date)
+//                 ->where('status', 'accepted')
+//                 ->exists();
+
+//             // If an online work request exists for today and it's accepted, set work_mod to 'accepter'
+//             // Otherwise, set work_mod to 'presentiel'
+//             $work_mod = $onlineWorkRequest ? 'accepter' : 'presentiel';
+
+//             // Add user status, availability, and time worked to the array
+//             $userStatuses[] = [
+//                 'user_id' => $user->id,
+//                 'cin' => $user->cin,
+//                 'firstname' => $user->firstname,
+//                 'lastname' => $user->lastname,
+//                 'tel' => $user->tel,
+//                 'work_mod' => $work_mod, // Update work_mod based on online work request
+//                 'email' => $user->email,
+//                 'status' => $status,
+//                 'availability' => $availability,
+//                 'time_worked' => $timeWorked,
+//             ];
+//         }
+
+//         // Return user statuses, availability, and time worked as JSON response
+//         return response()->json(['user_statuses' => $userStatuses], 200);
+//     } catch (\Exception $e) {
+//         // Handle exceptions and return an error response
+//         return response()->json(['error' => 'Failed to get user statuses and availability', 'message' => $e->getMessage()], 500);
+//     }
+// }
 
 public function getUserDailyWorkTime($id, Request $request)
 {

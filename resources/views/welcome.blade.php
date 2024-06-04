@@ -11,7 +11,8 @@
         <div class="row">
             <div class="col">
 <br/>
-      {{ $qrCode }}
+<h2> Scan ICI</h2>
+      {{ $qrCode }}<br/>
             </div>
       
 

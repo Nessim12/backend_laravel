@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\Newpassword;
 use App\Models\Admin;
 use App\Models\Conge;
+use App\Models\Holiday;
 use App\Models\Motif;
 use App\Models\Pointing;
 use App\Models\User;
@@ -79,24 +80,95 @@ public function sendNewPassword(Request $request)
             'password' => $newPassword,
         ]);
     }
+//     public function me()
+// {
+//     $user = auth()->user();
 
-public function me()
-{
-    $user = auth()->user();
+//     if (!$user) {
+//         return response()->json(['error' => 'Unauthorized'], 401);
+//     }
 
-    if (!$user) {
-        return response()->json(['error' => 'Unauthorized'], 401);
+//     if ($user instanceof Admin) {
+//         return response()->json(['user' => $user, 'role' => 'admin']);
+//     } elseif ($user instanceof User) {
+//         return response()->json(['user' => $user, 'role' => 'user']);
+//     } else {
+//         return response()->json(['error' => 'Unauthorized'], 401);
+//     }
+// }
+
+    public function me()
+    {
+        $user = auth()->user();
+    
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+    
+        $response = ['user' => $user];
+    
+        if ($user instanceof Admin) {
+            $response['role'] = 'admin';
+        } elseif ($user instanceof User) {
+            $response['role'] = 'user';
+    
+            // Get today's date
+            $date = now()->toDateString();
+    
+            // Check if today is a holiday
+            $isHoliday = Holiday::whereDate('holiday_date', $date)->exists();
+    
+            // Check if the user has a leave (congé) request for today
+            $hasLeave = conge::where('user_id', $user->id)
+                                    ->where('status', 'accepter')
+                                    ->where(function($query) use ($date) {
+                                        $query->whereDate('date_d', '<=', $date)
+                                              ->whereDate('date_f', '>=', $date);
+                                    })
+                                    ->exists();
+    
+            if ($isHoliday) {
+                // Today is a holiday, set status to 'Holiday'
+                $status = 'Holiday';
+            } elseif ($hasLeave) {
+                // User has an accepted leave request for today, set status to 'Conge'
+                $status = 'Conge';
+            } else {
+                // Find pointing record for the user on the specified date
+                $pointing = Pointing::where('user_id', $user->id)
+                                    ->whereDate('date', $date)
+                                    ->orderBy('created_at', 'desc') // Order by creation time to get the latest record
+                                    ->first();
+    
+                // Determine user status based on pointing record
+                if ($pointing && $pointing->entre) {
+                    $status = 'present';
+                } else {
+                    $status = 'absent';
+                }
+            }
+    
+            // Add the status to the response
+            $response['status'] = $status;
+        } else {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+    
+        return response()->json($response);
     }
+    
 
-    if ($user instanceof Admin) {
-        return response()->json(['user' => $user, 'role' => 'admin']);
-    } elseif ($user instanceof User) {
-        return response()->json(['user' => $user, 'role' => 'user']);
-    } else {
-        return response()->json(['error' => 'Unauthorized'], 401);
+    public function isHolidayToday()
+    {
+        $today = Carbon::today();
+        $isHoliday = Holiday::where('holiday_date', $today->toDateString())->exists();
+        $isSunday = $today->isSunday();
+    
+        $isHolidayToday = $isHoliday || $isSunday;
+    
+        return response()->json(['is_holiday_today' => $isHolidayToday]);
     }
-}
-
+    
 
 public function logout()
 {
@@ -323,7 +395,7 @@ public function create_demande(Request $request)
             ->exists();
 
         if ($existingConge) {
-            return response()->json(['error' => 'You already have a pending '], 400);
+            return response()->json(['error' => 'Vous avez déjà une demande en attente '], 400);
         }
 
         // Validate the incoming request data
@@ -355,7 +427,7 @@ public function create_demande(Request $request)
 
             // Check if the requested start date is within or before the last accepted leave request end date
             if ($dateDebut->lessThanOrEqualTo($lastEndDate)) {
-                return response()->json(['error' => 'You must wait until after your last accepted leave request ends'], 400);
+                return response()->json(['error' => 'Vous devez attendre la fin de votre dernière demande de congé acceptée'], 400);
             }
         }
 
@@ -380,6 +452,95 @@ public function create_demande(Request $request)
         return response()->json(['error' => 'Failed to create leave request', 'message' => $e->getMessage()], 500);
     }
 }
+public function update_demande(Request $request, $id)
+{
+    try {
+        $user = Auth::user();
+        $demande = Conge::find($id);
+
+        // Check if the leave request exists and belongs to the authenticated user
+        if (!$demande || $demande->user_id != $user->id) {
+            return response()->json(['error' => 'Leave request not found or not authorized'], 404);
+        }
+
+        // Validate the incoming request data
+        $validator = Validator::make($request->all(), [
+            'date_d' => 'required|date',
+            'date_f' => 'required|date|after:date_d',
+            'motif_id' => 'required|exists:motifs,id',
+            'description' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 400);
+        }
+
+        // Calculate the number of days between date_d and date_f
+        $dateDebut = Carbon::parse($request->date_d);
+        $dateFin = Carbon::parse($request->date_f);
+        $nbrJours = $dateFin->diffInDays($dateDebut);
+
+        // Find the last accepted leave request
+        $lastAcceptedConge = Conge::where('user_id', $user->id)
+            ->where('status', 'accepter') // Only consider 'accepter' status
+            ->orderBy('date_f', 'desc') // Order by date_f descending
+            ->first();
+
+        if ($lastAcceptedConge && $lastAcceptedConge->id != $id) {
+            // Get the end date of the last accepted leave request
+            $lastEndDate = Carbon::parse($lastAcceptedConge->date_f);
+
+            // Check if the requested start date is within or before the last accepted leave request end date
+            if ($dateDebut->lessThanOrEqualTo($lastEndDate)) {
+                return response()->json(['error' => 'You must wait until after your last accepted leave request ends'], 400);
+            }
+        }
+
+        // Check if the remaining soldecongée is sufficient for the requested duration
+        if ($user->soldecongée < $nbrJours) {
+            return response()->json(['error' => 'Insufficient leave balance for this request'], 400);
+        }
+
+        // Update the leave request (conge)
+        $demande->update([
+            'date_d' => $request->date_d,
+            'date_f' => $request->date_f,
+            'motif_id' => $request->motif_id,
+            'description' => $request->description,
+            'solde' => $nbrJours,
+            'status' => 'en_cours', // Status remains 'en_cours' during the update
+        ]);
+
+        return response()->json(['message' => 'Leave request updated successfully', 'demande' => $demande], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to update leave request', 'message' => $e->getMessage()], 500);
+    }
+}
+public function delete_demande(Request $request, $id)
+{
+    try {
+        $user = Auth::user();
+        $demande = Conge::findOrFail($id);
+
+        // Check if the leave request belongs to the authenticated user
+        if ($demande->user_id !== $user->id) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Check if the leave request status is 'en_cours'
+        if ($demande->status !== 'en_cours') {
+            return response()->json(['error' => 'Cannot delete leave request with status ' . $demande->status], 400);
+        }
+
+        // Delete the leave request
+        $demande->delete();
+
+        return response()->json(['message' => 'Leave request deleted successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to delete leave request', 'message' => $e->getMessage()], 500);
+    }
+}
+
 
 
 public function show_demandes(Request $request)
@@ -412,7 +573,20 @@ public function show_demandes(Request $request)
     }
 }
 
+public function showholidays()
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'Unauthenticated'], 401);
+            }
 
+            $holidays = Holiday::all();
+            return response()->json(['holidays' => $holidays], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Something went wrong'], 500);
+        }
+    }
 
 
 public function checkIn(Request $request)
@@ -648,7 +822,6 @@ public function getAllMotifs()
     }
 }
 
-
 public function getAttendanceStatusAndTimeWorked(Request $request)
 {
     try {
@@ -666,14 +839,19 @@ public function getAttendanceStatusAndTimeWorked(Request $request)
         $startDate = Carbon::parse($creationDate);
         $endDate = Carbon::today();
 
+        // Fetch all holidays and convert to an array of strings
+        $holidays = Holiday::pluck('holiday_date')->map(function ($date) {
+            return Carbon::parse($date)->toDateString();
+        })->toArray();
+
         // Loop through each date from the creation date up to today
         while ($startDate <= $endDate) {
             // Format the date
             $date = $startDate->toDateString();
 
-            // Check if the current date is a Sunday
-            if ($startDate->dayOfWeek === Carbon::SUNDAY) {
-                // Mark Sundays as holidays
+            // Check if the current date is a Sunday or a holiday
+            if ($startDate->dayOfWeek === Carbon::SUNDAY || in_array($date, $holidays)) {
+                // Mark as holiday
                 $attendanceStatus = 'holiday';
                 $totalTimeWorked = null; // No need to calculate total time worked if it's a holiday
             } else {
@@ -772,19 +950,19 @@ public function onlinwork(Request $request)
 
         $user = Auth::user();
 
-        // Check if the user has already submitted a request for the specified date
+        // Check if the user already has a request with status "en_cours"
         $existingRequest = Workremote::where('user_id', $user->id)
-            ->whereDate('date', $request->input('date'))
+            ->where('status', 'en_cours')
             ->first();
 
         if ($existingRequest) {
-            return response()->json(['error' => 'You have already submitted a request for this date.'], 400);
+            return response()->json(['error' => 'Vous avez déjà une demande avec le statut "en_cours".'], 400);
         }
 
         // Validate the incoming request data
         $validator = Validator::make($request->all(), [
             'reason' => 'required|string',
-            'date' => 'required|date', // Add validation rule for date parameter
+            'date' => 'required|date|after_or_equal:tomorrow', // Date must be after or equal to tomorrow
         ]);
 
         if ($validator->fails()) {
@@ -802,6 +980,39 @@ public function onlinwork(Request $request)
         return response()->json(['message' => 'Work mode change request created successfully', 'workonline' => $workonline], 201);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to create work mode change request', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
+public function deleteWorkRequest(Request $request, $id)
+{
+    try {
+        // Check if the user is authenticated
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated.'], 401);
+        }
+
+        $user = Auth::user();
+
+        // Find the work mode change request by ID
+        $workRequest = Workremote::find($id);
+
+        // Check if the work mode change request exists
+        if (!$workRequest) {
+            return response()->json(['error' => 'Work mode change request not found.'], 404);
+        }
+
+        // Check if the authenticated user is the owner of the work mode change request
+        if ($workRequest->user_id !== $user->id) {
+            return response()->json(['error' => 'You are not authorized to delete this work mode change request.'], 403);
+        }
+
+        // Delete the work mode change request
+        $workRequest->delete();
+
+        return response()->json(['message' => 'Work mode change request deleted successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to delete work mode change request', 'message' => $e->getMessage()], 500);
     }
 }
 
