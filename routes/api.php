@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Route;
 */use App\Http\Controllers\UserController;
 Route::prefix('user')->group(function () {
     Route::post('/login', [UserController::class, 'login']);
-    Route::post('/newpassword', [UserController::class, 'sendNewPassword']);
+    Route::post('/newpassword', [UserController::class, 'sendVerificationCode']);
+    Route::post('/resetnewpassword', [UserController::class, 'resetPassword']);
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [UserController::class, 'logout']);
         Route::get('/user', [UserController::class, 'me']);

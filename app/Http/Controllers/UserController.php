@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\NewLeaveRequestNotification;
 use App\Mail\Newpassword;
+use App\Mail\NewPasswordMail;
+use App\Mail\OnlineWorkRequestNotification;
+use App\Mail\ProfileUpdateNotification;
 use App\Models\Admin;
 use App\Models\Conge;
 use App\Models\Holiday;
@@ -43,59 +47,120 @@ class UserController extends Controller
 
     return response()->json(['error' => 'Unauthorized'], 401);
 }
-
-public function sendNewPassword(Request $request)
+public function sendVerificationCode(Request $request)
     {
         // Validate request input
         $request->validate([
             'email' => 'required|email|exists:users,email',
         ]);
 
-        // Generate a new password
-        $newPassword = Str::random(8); // Generate a random password
+        // Generate a 4-digit verification code
+        $verificationCode = str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
 
-        // Update user's password in the database
+        // Update user's password field with the verification code (for demonstration purposes)
         $user = User::where('email', $request->email)->first();
-        $user->password = Hash::make($newPassword);
+        $user->password = bcrypt($verificationCode); // Store the verification code temporarily
         $user->save();
 
+        // Send the verification code via email
         $data = [
-            'firstname' => $user->firstname,
-            'lastname' => $user->lastname,
-            'email' => $user->email,
-            'password' => $newPassword,
-            'new_password' => $newPassword, // Add this line
+            'email' => $request->email,
+            'verification_code' => $verificationCode,
         ];
-        
 
-        Mail::to($user->email)->send(new Newpassword($data));
-        // Send the new password to the user's email
-        // Mail::send('emails.new_password', ['password' => $newPassword], function($message) use ($user) {
-        //     $message->to($user->email)->subject('Your New Password');
-        // });
+        Mail::to($request->email)->send(new Newpassword($data));
 
         return response()->json([
             'success' => true,
-            'message' => 'New password sent to your email.',
-            'password' => $newPassword,
+            'message' => 'Verification code sent to your email.',
+            'verification_code' => $verificationCode, // For demonstration, you might not want to return this in production
         ]);
     }
-//     public function me()
-// {
-//     $user = auth()->user();
+    
+    public function resetPassword(Request $request)
+    {
+        // Validate request input
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+            'verification_code' => 'required|digits:4',
+        ]);
+    
+        // Retrieve user by email
+        $user = User::where('email', $request->email)->first();
+    
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found.',
+            ], 404);
+        }
+    
+        // Check if the verification code matches the stored password hash
+        if (Hash::check($request->verification_code, $user->password)) {
+            // Generate a new random password
+            $newPassword = Str::random(8);
+    
+            // Update user's password in the database
+            $user->password = Hash::make($newPassword);
+            $user->save();
+    
+            // Send the new password via email
+            $data = [
+                'email' => $request->email,
+                'new_password' => $newPassword,
+            ];
+    
+            // Uncomment to send email with new password
+            Mail::to($request->email)->send(new NewPasswordMail($data));
+    
+            return response()->json([
+                'success' => true,
+                'message' => 'Password reset successfully. Check your email for the new password.',
+                'password' => $newPassword
+            ]);
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid verification code.',
+            ], 422);
+        }
+    }
 
-//     if (!$user) {
-//         return response()->json(['error' => 'Unauthorized'], 401);
-//     }
 
-//     if ($user instanceof Admin) {
-//         return response()->json(['user' => $user, 'role' => 'admin']);
-//     } elseif ($user instanceof User) {
-//         return response()->json(['user' => $user, 'role' => 'user']);
-//     } else {
-//         return response()->json(['error' => 'Unauthorized'], 401);
+
+// public function sendNewPassword(Request $request)
+//     {
+//         // Validate request input
+//         $request->validate([
+//             'email' => 'required|email|exists:users,email',
+//         ]);
+
+//         // Generate a new password
+//         $newPassword = Str::random(8); // Generate a random password
+
+//         // Update user's password in the database
+//         $user = User::where('email', $request->email)->first();
+//         $user->password = Hash::make($newPassword);
+//         $user->save();
+
+//         $data = [
+//             'firstname' => $user->firstname,
+//             'lastname' => $user->lastname,
+//             'email' => $user->email,
+//             'password' => $newPassword,
+//             'new_password' => $newPassword, // Add this line
+//         ];
+        
+
+//         Mail::to($user->email)->send(new Newpassword($data));
+
+
+//         return response()->json([
+//             'success' => true,
+//             'message' => 'New password sent to your email.',
+//             'password' => $newPassword,
+//         ]);
 //     }
-// }
 
     public function me()
     {
@@ -244,8 +309,12 @@ public function update(Request $request)
     // Save the updated user details
     $user->save();
 
+    // Send email notification to the user about the profile update
+    Mail::to($user->email)->send(new ProfileUpdateNotification($user));
+
     return response()->json(['message' => 'User details updated successfully', 'user' => $user]);
 }
+
 
 
 public function updateAvatar(Request $request)
@@ -389,19 +458,27 @@ public function create_demande(Request $request)
     try {
         $user = Auth::user();
 
-        // Check if the user already has a pending or accepted congé request
         $existingConge = Conge::where('user_id', $user->id)
-            ->whereIn('status', ['en_cours']) // Check for 'en_cours' and 'accepter' statuses
+            ->where('status', 'en_cours') // Check for 'en_cours' status
             ->exists();
 
         if ($existingConge) {
             return response()->json(['error' => 'Vous avez déjà une demande en attente '], 400);
         }
 
-        // Validate the incoming request data
+        // Custom validation logic for date_d to ensure it is today or in the future and not a Sunday
         $validator = Validator::make($request->all(), [
-            'date_d' => 'required|date',
-            'date_f' => 'required|date|after:date_d',
+            'date_d' => ['required', 'date', function ($attribute, $value, $fail) {
+                $dateDebut = Carbon::parse($value)->startOfDay();
+                $today = Carbon::today();
+                if ($dateDebut->lt($today)) {
+                    $fail('La date de début ne peut pas être une date passée.');
+                }
+                if ($dateDebut->dayOfWeek === Carbon::SUNDAY) {
+                    $fail('La date de début ne peut pas être un dimanche.');
+                }
+            }],
+            'date_f' => 'required|date|after_or_equal:date_d', // Allow same day end date
             'motif_id' => 'required|exists:motifs,id',
             'description' => 'required|string',
         ]);
@@ -410,10 +487,10 @@ public function create_demande(Request $request)
             return response()->json(['error' => $validator->errors()->first()], 400);
         }
 
-        // Calculate the number of days between date_d and date_f
+        // Calculate the number of days between date_d and date_f, including the start date
         $dateDebut = Carbon::parse($request->date_d);
         $dateFin = Carbon::parse($request->date_f);
-        $nbrJours = $dateFin->diffInDays($dateDebut);
+        $nbrJours = $dateFin->diffInDays($dateDebut) + 1; // Include the start date in the count
 
         // Find the last accepted leave request
         $lastAcceptedConge = Conge::where('user_id', $user->id)
@@ -447,75 +524,22 @@ public function create_demande(Request $request)
             'status' => 'en_cours', // Status is initially set to 'en_cours'
         ]);
 
+        // Prepare the email data
+        $data = [
+            'user' => $user,
+            'demande' => $demande,
+        ];
+
+        // Send email notification to the user
+        Mail::to($user->email)->send(new NewLeaveRequestNotification($data)); // Replace with the actual user's email
+
         return response()->json(['message' => 'Leave request created successfully', 'demande' => $demande], 201);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to create leave request', 'message' => $e->getMessage()], 500);
     }
 }
-public function update_demande(Request $request, $id)
-{
-    try {
-        $user = Auth::user();
-        $demande = Conge::find($id);
 
-        // Check if the leave request exists and belongs to the authenticated user
-        if (!$demande || $demande->user_id != $user->id) {
-            return response()->json(['error' => 'Leave request not found or not authorized'], 404);
-        }
 
-        // Validate the incoming request data
-        $validator = Validator::make($request->all(), [
-            'date_d' => 'required|date',
-            'date_f' => 'required|date|after:date_d',
-            'motif_id' => 'required|exists:motifs,id',
-            'description' => 'required|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['error' => $validator->errors()->first()], 400);
-        }
-
-        // Calculate the number of days between date_d and date_f
-        $dateDebut = Carbon::parse($request->date_d);
-        $dateFin = Carbon::parse($request->date_f);
-        $nbrJours = $dateFin->diffInDays($dateDebut);
-
-        // Find the last accepted leave request
-        $lastAcceptedConge = Conge::where('user_id', $user->id)
-            ->where('status', 'accepter') // Only consider 'accepter' status
-            ->orderBy('date_f', 'desc') // Order by date_f descending
-            ->first();
-
-        if ($lastAcceptedConge && $lastAcceptedConge->id != $id) {
-            // Get the end date of the last accepted leave request
-            $lastEndDate = Carbon::parse($lastAcceptedConge->date_f);
-
-            // Check if the requested start date is within or before the last accepted leave request end date
-            if ($dateDebut->lessThanOrEqualTo($lastEndDate)) {
-                return response()->json(['error' => 'You must wait until after your last accepted leave request ends'], 400);
-            }
-        }
-
-        // Check if the remaining soldecongée is sufficient for the requested duration
-        if ($user->soldecongée < $nbrJours) {
-            return response()->json(['error' => 'Insufficient leave balance for this request'], 400);
-        }
-
-        // Update the leave request (conge)
-        $demande->update([
-            'date_d' => $request->date_d,
-            'date_f' => $request->date_f,
-            'motif_id' => $request->motif_id,
-            'description' => $request->description,
-            'solde' => $nbrJours,
-            'status' => 'en_cours', // Status remains 'en_cours' during the update
-        ]);
-
-        return response()->json(['message' => 'Leave request updated successfully', 'demande' => $demande], 200);
-    } catch (\Exception $e) {
-        return response()->json(['error' => 'Failed to update leave request', 'message' => $e->getMessage()], 500);
-    }
-}
 public function delete_demande(Request $request, $id)
 {
     try {
@@ -554,9 +578,9 @@ public function show_demandes(Request $request)
             ->get();
 
         // Calculate solde for each demande
-        $demandes->each(function ($demande) {
-            $demande->solde = \Carbon\Carbon::parse($demande->date_f)->diffInDays(\Carbon\Carbon::parse($demande->date_d));
-        });
+        // $demandes->each(function ($demande) {
+        //     $demande->solde = \Carbon\Carbon::parse($demande->date_f)->diffInDays(\Carbon\Carbon::parse($demande->date_d));
+        // });
 
         // Transform motif_id to motif_name in each demande
         $demandes->transform(function ($demande) {
@@ -939,7 +963,6 @@ public function getUserCreationDateFromToken(Request $request)
         return response()->json(['error' => 'Failed to fetch user creation date', 'message' => $e->getMessage()], 500);
     }
 }
-
 public function onlinwork(Request $request)
 {
     try {
@@ -962,7 +985,23 @@ public function onlinwork(Request $request)
         // Validate the incoming request data
         $validator = Validator::make($request->all(), [
             'reason' => 'required|string',
-            'date' => 'required|date|after_or_equal:tomorrow', // Date must be after or equal to tomorrow
+            'date' => [
+                'required',
+                'date',
+                'after_or_equal:tomorrow', // Date must be after or equal to tomorrow
+                function ($attribute, $value, $fail) {
+                    // Check if the date is a Sunday
+                    if (Carbon::parse($value)->dayOfWeek === Carbon::SUNDAY) {
+                        $fail('Vous ne pouvez pas soumettre une demande pour un dimanche.');
+                    }
+
+                    // Check if the date is a holiday
+                    $holiday = Holiday::where('holiday_date', $value)->first();
+                    if ($holiday) {
+                        $fail('Vous ne pouvez pas soumettre une demande pour un jour férié (' . $holiday->holiday_name . ').');
+                    }
+                },
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -976,6 +1015,15 @@ public function onlinwork(Request $request)
             'date' => $request->input('date'), // Store the date in the database
             'status' => 'en_cours', // Status is initially set to 'en_cours'
         ]);
+
+        // Prepare the email data
+        $data = [
+            'user' => $user,
+            'workonline' => $workonline,
+        ];
+
+        // Send email notification to the user
+        Mail::to($user->email)->send(new OnlineWorkRequestNotification($data));
 
         return response()->json(['message' => 'Work mode change request created successfully', 'workonline' => $workonline], 201);
     } catch (\Exception $e) {

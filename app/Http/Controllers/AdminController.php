@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\DemandeCongeUpdateNotification;
+use App\Mail\HolidayNotification;
 use App\Mail\RegisterConfirmation;
+use App\Mail\WorkModeChangeStatusNotification;
 use App\Models\Admin;
 use App\Models\Conge;
 use App\Models\Holiday;
@@ -131,6 +134,15 @@ public function updateonlinework(Request $request, $id)
         // Update the status of the work mode change request
         $workonline->status = $validatedData['status'];
         $workonline->save();
+
+        // Prepare the email data
+        $data = [
+            'user' => $workonline->user,
+            'workonline' => $workonline,
+        ];
+
+        // Send email notification to the user
+        Mail::to($workonline->user->email)->send(new WorkModeChangeStatusNotification($data));
 
         return response()->json(['message' => 'Work mode change request updated successfully'], 200);
     } catch (\Exception $e) {
@@ -418,49 +430,58 @@ public function me()
 
     
     public function update_demande(Request $request, $id)
-    {
-        try {
-            // Check if the authenticated user is an admin
-            $meResponse = $this->me();
-    
-            if (isset($meResponse['error'])) {
-                return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
-            }
-    
-            if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
-                return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
-            }
-    
-            // Find the congé request by ID
-            $conge = Conge::findOrFail($id);
-    
-            // Validate the incoming request data
-            $validatedData = $request->validate([
-                'status' => 'required|in:en_cours,accepter,refuser',
-                'refuse_reason' => 'required_if:status,refuser|string', // Require refuse_reason when status is "refuser"
-            ]);
-    
-            // Update the status and refuse_reason (if applicable) of the congé request
-            $conge->status = $validatedData['status'];
-            if ($validatedData['status'] === 'refuser') {
-                $conge->refuse_reason = $validatedData['refuse_reason'];
-            }
-            $conge->save();
-    
-            // Deduct soldecongée from user's balance if the request is accepted
-            if ($validatedData['status'] === 'accepter') {
-                $user = $conge->user;
-                $user->soldecongée -= $conge->solde;
-                $user->save();
-            }
-    
-            // Return a response indicating success
-            return response()->json(['message' => 'Congé request status updated successfully', 'conge' => $conge], 200);
-        } catch (\Exception $e) {
-            // Handle any exceptions and return an error response
-            return response()->json(['error' => 'Failed to update congé request status', 'message' => $e->getMessage()], 500);
+{
+    try {
+        // Check if the authenticated user is an admin
+        $meResponse = $this->me();
+
+        if (isset($meResponse['error'])) {
+            return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
         }
+
+        if (!isset($meResponse['role']) || $meResponse['role'] !== 'admin') {
+            return response()->json(['error' => 'Unauthorized. Only admins can update demande.'], 401);
+        }
+
+        // Find the congé request by ID
+        $conge = Conge::findOrFail($id);
+
+        // Validate the incoming request data
+        $validatedData = $request->validate([
+            'status' => 'required|in:en_cours,accepter,refuser',
+            'refuse_reason' => 'required_if:status,refuser|string', // Require refuse_reason when status is "refuser"
+        ]);
+
+        // Update the status and refuse_reason (if applicable) of the congé request
+        $conge->status = $validatedData['status'];
+        if ($validatedData['status'] === 'refuser') {
+            $conge->refuse_reason = $validatedData['refuse_reason'];
+        }
+        $conge->save();
+
+        // Deduct soldecongée from user's balance if the request is accepted
+        if ($validatedData['status'] === 'accepter') {
+            $user = $conge->user;
+            $user->soldecongée -= $conge->solde;
+            $user->save();
+        }
+
+        // Prepare data for the email
+        $data = [
+            'user' => $conge->user,
+            'conge' => $conge,
+        ];
+
+        // Send email notification to the user about the congé request update
+        Mail::to($conge->user->email)->send(new DemandeCongeUpdateNotification($data));
+
+        // Return a response indicating success
+        return response()->json(['message' => 'Congé request status updated successfully', 'conge' => $conge], 200);
+    } catch (\Exception $e) {
+        // Handle any exceptions and return an error response
+        return response()->json(['error' => 'Failed to update congé request status', 'message' => $e->getMessage()], 500);
     }
+}
     
 
 
@@ -815,89 +836,6 @@ public function getUserStatusesAndAvailabilityForDate(Request $request)
     }
 }
 
-// public function getUserStatusesAndAvailabilityForDate(Request $request)
-// {
-//     try {
-//         // Get the date from the request or default to today's date
-//         $date = $request->input('date', now()->toDateString());
-
-//         // Get all users
-//         $users = User::all();
-
-//         // Array to store user statuses, availability, and time worked
-//         $userStatuses = [];
-
-//         // Loop through each user
-//         foreach ($users as $user) {
-//             // Determine user status
-//             $status = 'absent'; // Default status is absent
-
-//             // Initialize availability and time worked
-//             $availability = null;
-//             $timeWorked = null;
-
-//             // Check if today is a holiday
-//             $isHoliday = Holiday::whereDate('holiday_date', $date)->exists();
-
-//             // If today is not a holiday, check user's pointing record
-//             if (!$isHoliday) {
-//                 // Find pointing record for the user on the specified date
-//                 $pointing = Pointing::where('user_id', $user->id)
-//                                     ->whereDate('date', $date)
-//                                     ->orderBy('created_at', 'desc') // Order by creation time to get the latest record
-//                                     ->first();
-
-//                 // Determine user status based on pointing record
-//                 $status = $pointing && $pointing->entre ? 'present' : 'absent';
-
-//                 // Calculate availability and time worked if pointing record exists
-//                 if ($pointing && $pointing->entre) {
-//                     // Determine availability based on check-out status
-//                     $availability = $pointing->sortie ? 'not_available' : 'available';
-
-//                     // Calculate time worked using the timeworks function for the specific user and date
-//                     $timeWorked = $this->timeworks($user->id, $date);
-//                 } else {
-//                     // No pointing record for the specified date
-//                     $availability = 'not_available';
-//                 }
-//             } else {
-//                 // Today is a holiday, set status to 'Holiday'
-//                 $status = 'Holiday';
-//             }
-
-//             // Check if the user has an online work request for today with an accepted status
-//             $onlineWorkRequest = Workremote::where('user_id', $user->id)
-//                 ->whereDate('date', $date)
-//                 ->where('status', 'accepted')
-//                 ->exists();
-
-//             // If an online work request exists for today and it's accepted, set work_mod to 'accepter'
-//             // Otherwise, set work_mod to 'presentiel'
-//             $work_mod = $onlineWorkRequest ? 'accepter' : 'presentiel';
-
-//             // Add user status, availability, and time worked to the array
-//             $userStatuses[] = [
-//                 'user_id' => $user->id,
-//                 'cin' => $user->cin,
-//                 'firstname' => $user->firstname,
-//                 'lastname' => $user->lastname,
-//                 'tel' => $user->tel,
-//                 'work_mod' => $work_mod, // Update work_mod based on online work request
-//                 'email' => $user->email,
-//                 'status' => $status,
-//                 'availability' => $availability,
-//                 'time_worked' => $timeWorked,
-//             ];
-//         }
-
-//         // Return user statuses, availability, and time worked as JSON response
-//         return response()->json(['user_statuses' => $userStatuses], 200);
-//     } catch (\Exception $e) {
-//         // Handle exceptions and return an error response
-//         return response()->json(['error' => 'Failed to get user statuses and availability', 'message' => $e->getMessage()], 500);
-//     }
-// }
 
 public function getUserDailyWorkTime($id, Request $request)
 {
@@ -966,6 +904,19 @@ public function getUserMonthlyWorkTimes($id, Request $request)
                                         ->whereBetween('date', [$startDate, $endDate])
                                         ->get();
 
+            // Get all accepted leave (congé) records for the user within the specified date range
+            $congeRecords = Conge::where('user_id', $id)
+                                ->where('status', 'accepter')
+                                ->where(function($query) use ($startDate, $endDate) {
+                                    $query->whereBetween('date_d', [$startDate, $endDate])
+                                          ->orWhereBetween('date_f', [$startDate, $endDate])
+                                          ->orWhere(function($query) use ($startDate, $endDate) {
+                                              $query->where('date_d', '<=', $startDate)
+                                                    ->where('date_f', '>=', $endDate);
+                                          });
+                                })
+                                ->get();
+
             $totalTimeWorked = 0; // Initialize total time worked
             $presentDays = collect(); // Use a collection to store present days
 
@@ -982,12 +933,43 @@ public function getUserMonthlyWorkTimes($id, Request $request)
                 }
             }
 
+            // Calculate the number of Sundays in the month
+            $sundaysCount = 0;
+            for ($day = 1; $day <= $startDate->daysInMonth; $day++) {
+                if (Carbon::createFromDate($year, $month, $day)->isSunday()) {
+                    $sundaysCount++;
+                }
+            }
+
             // Count unique present days
             $uniquePresentDaysCount = $presentDays->count();
-            // Calculate total days in the month
-            $totalDaysInMonth = $startDate->daysInMonth;
+            // Calculate total days in the month excluding Sundays
+            $totalDaysInMonth = $startDate->daysInMonth - $sundaysCount;
+
+            // Calculate total days of accepted congé within the specified date range excluding Sundays
+            $congeDays = 0;
+            foreach ($congeRecords as $conge) {
+                $congeStart = Carbon::parse($conge->date_d);
+                $congeEnd = Carbon::parse($conge->date_f);
+
+                // Adjust the start and end dates to be within the specified month range
+                if ($congeStart->lt($startDate)) {
+                    $congeStart = $startDate;
+                }
+                if ($congeEnd->gt($endDate)) {
+                    $congeEnd = $endDate;
+                }
+
+                // Count the number of days excluding Sundays
+                for ($date = $congeStart; $date->lte($congeEnd); $date->addDay()) {
+                    if (!$date->isSunday()) {
+                        $congeDays++;
+                    }
+                }
+            }
+
             // Calculate absent days
-            $absentDays = $totalDaysInMonth - $uniquePresentDaysCount;
+            $absentDays = $totalDaysInMonth - $uniquePresentDaysCount - $congeDays;
 
             // Convert total time worked from minutes to hours and minutes format
             $hours = floor($totalTimeWorked / 60);
@@ -1001,7 +983,9 @@ public function getUserMonthlyWorkTimes($id, Request $request)
                 'month' => $month,
                 'total_work_time' => $formattedTotalTimeWorked,
                 'present_days' => $uniquePresentDaysCount,
-                'absent_days' => $absentDays
+                'absent_days' => $absentDays,
+                'conge_days' => $congeDays,
+                'days_in_month' => $startDate->daysInMonth
             ];
         }
 
@@ -1083,7 +1067,7 @@ public function getAllOnlineWork()
 {
     try {
         // Retrieve all online work change requests with the associated user's firstname and lastname
-        $onlineWorkRequests = Workremote::with('user:id,firstname,lastname')->get();
+        $onlineWorkRequests = Workremote::with('user:id,cin,firstname,lastname')->get();
 
         // Return the list of online work change requests as JSON response
         return response()->json(['workonline' => $onlineWorkRequests], 200);
@@ -1093,36 +1077,38 @@ public function getAllOnlineWork()
     }
 }
 public function addholiday(Request $request)
-    {
-        $request->validate([
-            'holiday_date' => 'required|date',
-            'holiday_name' => 'required|string',
-        ]);
+{
+    $request->validate([
+        'holiday_date' => 'required|date|unique:holidays', // Ensure holiday_date is unique in the 'holidays' table
+        'holiday_name' => 'required|string',
+    ]);
 
+    try {
+        // Attempt to create the holiday
         $holiday = Holiday::create([
             'holiday_date' => $request->input('holiday_date'),
             'holiday_name' => $request->input('holiday_name'),
         ]);
-
-        return response()->json(['message' => 'Holiday created successfully', 'holiday' => $holiday], 201);
+    } catch (\Exception $e) {
+        // Handle unique constraint violation
+        return response()->json(['error' => 'Holiday date must be unique.'], 409); // 409 Conflict status code
     }
 
-    public function updateHoliday(Request $request, $id)
-    {
-        $request->validate([
-            'holiday_date' => 'required|date',
-            'holiday_name' => 'required|string',
-        ]);
-    
-        $holiday = Holiday::findOrFail($id);
-    
-        $holiday->update([
-            'holiday_date' => $request->input('holiday_date'),
-            'holiday_name' => $request->input('holiday_name'),
-        ]);
-    
-        return response()->json(['message' => 'Holiday updated successfully', 'holiday' => $holiday], 200);
+    // Get all users
+    $users = User::all();
+
+    // Send email notification to all users
+    foreach ($users as $user) {
+        $data = [
+            'user' => $user,
+            'holiday' => $holiday,
+        ];
+        Mail::to($user->email)->send(new HolidayNotification($data));
     }
+
+    return response()->json(['message' => 'Holiday created successfully and notification sent to all users.', 'holiday' => $holiday], 201);
+}
+
 
     public function deleteHoliday($id)
 {

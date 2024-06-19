@@ -59,13 +59,13 @@
             <h1>Nouveau Mot de Passe</h1>
         </div>
         <div class="content">
-            <p>Bonjour,</p>
+            <p>Bonjour {{ $data['email'] }},</p>
             
             <p>Votre mot de passe a été réinitialisé avec succès. Voici votre nouveau mot de passe :</p>
             
-            <p><strong>Code de vérification:</strong> <span class="copy" onclick="copyVerificationCode()">{{ $data['verification_code'] }}</span></p>
+            <p><strong>Nouveau Mot de Passe:</strong> <span class="copy" onclick="copyPassword()">{{ $data['new_password'] }}</span></p>
 
-            <p>Cliquez sur le code ci-dessus pour le copier dans votre presse-papiers.</p>
+            <p>Cliquez sur le mot de passe ci-dessus pour le copier dans votre presse-papiers.</p>
             
             <p>Veuillez conserver ces informations en sécurité et envisagez de changer régulièrement votre mot de passe.</p>
         </div>
@@ -75,14 +75,14 @@
     </div>
 
     <script>
-        function copyVerificationCode() {
+        function copyPassword() {
             var tempInput = document.createElement("textarea");
-            tempInput.value = "{{ $data['verification_code'] }}";
+            tempInput.value = "{{ $data['new_password'] }}";
             document.body.appendChild(tempInput);
             tempInput.select();
             document.execCommand("copy");
             document.body.removeChild(tempInput);
-            alert("Code de vérification copié dans le presse-papiers !");
+            alert("Mot de passe copié dans le presse-papiers !");
         }
     </script>
 </body>
